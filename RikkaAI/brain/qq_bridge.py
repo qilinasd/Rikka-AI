@@ -2,8 +2,7 @@
 RikkaAI - QQ 桥接模块
 通过 NapCat (OneBot v11) WebSocket 连接 QQ
 """
-import json, os, base64
-from urllib.parse import quote
+import json
 import threading
 import time
 import logging
@@ -99,111 +98,23 @@ class NapCatBridge:
         finally:
             self._pending.pop(echo, None)
 
-    def send_private_msg(self, user_id: int, message) -> bool:
-        """发送私聊消息（纯文本自动转 OneBot 消息段格式，同步等待响应）"""
+    def send_private_msg(self, user_id: int, message: str) -> bool:
+        """发送私聊消息"""
         try:
-            if isinstance(message, str) and not message.startswith('[CQ:'):
-                msg_payload = [{"type": "text", "data": {"text": message}}]
-            else:
-                msg_payload = message
             result = self._api_call("send_private_msg", {
-                "user_id": user_id, "message": msg_payload
+                "user_id": user_id, "message": message
             })
             return result is not None
         except:
             return False
 
-    def send_private_msg_async(self, user_id: int, message) -> bool:
-        """异步发送私聊消息（发完即回，不等响应，不阻塞）"""
+    def send_group_msg(self, group_id: int, message: str) -> bool:
+        """发送群消息"""
         try:
-            if isinstance(message, str) and not message.startswith('[CQ:'):
-                msg_payload = [{"type": "text", "data": {"text": message}}]
-            else:
-                msg_payload = message
-            payload = {"action": "send_private_msg",
-                       "params": {"user_id": user_id, "message": msg_payload}}
-            with self._lock:
-                if self._ws:
-                    self._ws.send(json.dumps(payload))
-                    return True
-            return False
-        except:
-            return False
-
-    def send_group_msg(self, group_id: int, message) -> bool:
-        """发送群消息（纯文本自动转 OneBot 消息段格式，同步等待响应）"""
-        try:
-            if isinstance(message, str) and not message.startswith('[CQ:'):
-                msg_payload = [{"type": "text", "data": {"text": message}}]
-            else:
-                msg_payload = message
             result = self._api_call("send_group_msg", {
-                "group_id": group_id, "message": msg_payload
+                "group_id": group_id, "message": message
             })
             return result is not None
-        except:
-            return False
-
-    def _make_image_payload(self, image_path: str) -> list:
-        """构建图片消息段——优先 base64，大图用 URL 编码后的 file:///"""
-        abs_path = os.path.abspath(image_path)
-        if not os.path.exists(image_path):
-            return [{"type": "image", "data": {"file": ""}}]
-        size_mb = os.path.getsize(image_path) / 1024 / 1024
-
-        # 小于 3MB 的图全部用 base64（避免中文路径 URL 解析失败）
-        if size_mb < 3:
-            try:
-                with open(image_path, "rb") as f:
-                    b64 = base64.b64encode(f.read()).decode()
-                return [{"type": "image", "data": {"file": f"base64://{b64}"}}]
-            except:
-                pass
-
-        # 超大图用 file:/// URI，路径必须 URL 编码（处理中文和空格）
-        path_fwd = abs_path.replace(os.sep, '/')
-        encoded = quote(path_fwd, safe='/:')  # 只保留 : 和 /，中文和空格全部编码
-        return [{"type": "image", "data": {"file": f"file:///{encoded}"}}]
-
-    def send_image(self, user_id: int, image_path: str) -> bool:
-        """发送图片到私聊"""
-        if not os.path.exists(image_path):
-            return False
-        try:
-            msg_payload = self._make_image_payload(image_path)
-            result = self._api_call("send_private_msg", {
-                "user_id": user_id, "message": msg_payload
-            })
-            return result is not None
-        except:
-            return False
-
-    def send_group_image(self, group_id: int, image_path: str) -> bool:
-        """发送图片到群聊"""
-        if not os.path.exists(image_path):
-            return False
-        try:
-            msg_payload = self._make_image_payload(image_path)
-            result = self._api_call("send_group_msg", {
-                "group_id": group_id, "message": msg_payload
-            })
-            return result is not None
-        except:
-            return False
-
-    def send_image_async(self, user_id: int, image_path: str) -> bool:
-        """异步发送图片（发完即回，不等待）"""
-        if not os.path.exists(image_path):
-            return False
-        try:
-            msg_payload = self._make_image_payload(image_path)
-            payload = {"action": "send_private_msg",
-                       "params": {"user_id": user_id, "message": msg_payload}}
-            with self._lock:
-                if self._ws:
-                    self._ws.send(json.dumps(payload))
-                    return True
-            return False
         except:
             return False
 

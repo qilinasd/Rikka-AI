@@ -166,29 +166,6 @@ class SummaryWorker(QObject):
             self.done.emit("摘要生成失败")
 
 
-class QQAgentWorker(QObject):
-    """QQ 消息处理线程（带权限控制）"""
-    finished = pyqtSignal(str)
-    error = pyqtSignal(str)
-
-    def __init__(self, agent, text, restricted=False, stream_to_ui=True):
-        super().__init__()
-        self.agent = agent
-        self._input = text
-        self._restricted = restricted
-        self._stream = stream_to_ui
-
-    def run(self):
-        try:
-            self.agent.set_restricted(self._restricted)
-            # stream_to_ui=False 时不流式到界面（QQ 回复一性次显示）
-            on_stream = None
-            r = self.agent.chat(self._input, on_stream=on_stream)
-            self.finished.emit(r)
-        except Exception as e:
-            self.error.emit(str(e))
-
-
 # ═══════════════════════════════════════════════════════════════════
 #  主窗口
 # ═══════════════════════════════════════════════════════════════════
@@ -205,13 +182,8 @@ class MainWindow(QMainWindow):
         self.agent = AgentCore(memory=self.memory)
         self.agent.start_session()
 
-        # QQ 用户会话池（每个QQ号独立 AgentCore + 独立会话）
-        self._qq_agents = {}  # user_id -> AgentCore实例
-
         # QQ 桥接（信号桥，保证线程安全）
         self._qq_bridge = get_bridge()
-        from brain import tools as _tt
-        _tt.set_qq_bridge(self._qq_bridge)
         self._qq_signals = QQBridgeSignals()
         self._qq_signals.connected.connect(self._on_qq_connected)
         self._qq_signals.disconnected.connect(self._on_qq_disconnected)
@@ -293,6 +265,7 @@ class MainWindow(QMainWindow):
             ("📝", "备忘", self._open_notes),
             ("🔧", "工具", self._open_tools),
             ("💾", "保存", self._save_context),
+            ("⚙", "设置", self._open_settings),
         ]:
             b = QPushButton(emoji)
             b.setFixedSize(32, 32)
@@ -306,7 +279,8 @@ class MainWindow(QMainWindow):
             b.clicked.connect(slot)
             tl.addWidget(b)
 
-        # 🛑 停止按钮（特殊样式）
+        # 🛑 停止按钮（单独放，特殊样式）
+        # 🛑 停止按钮（分开，特殊样式）
         self._stop_btn = QPushButton("⏹")
         self._stop_btn.setFixedSize(28, 28)
         self._stop_btn.setCursor(Qt.PointingHandCursor)
@@ -331,19 +305,6 @@ class MainWindow(QMainWindow):
         )
         self._qq_btn.clicked.connect(self._toggle_qq_bridge)
         tl.addWidget(self._qq_btn)
-
-        # ⚙ 设置按钮（放到最右上角）
-        self._settings_btn = QPushButton("⚙")
-        self._settings_btn.setFixedSize(32, 32)
-        self._settings_btn.setCursor(Qt.PointingHandCursor)
-        self._settings_btn.setToolTip("设置")
-        self._settings_btn.setStyleSheet(
-            "QPushButton{background:transparent;border:1px solid #3a1a6e;"
-            "border-radius:16px;font-size:14px;color:#7a5aaa}"
-            "QPushButton:hover{background:#2d1b4e;border-color:#9b59b6;color:#ffd700}"
-        )
-        self._settings_btn.clicked.connect(self._open_settings)
-        tl.addWidget(self._settings_btn)
         ml.addWidget(tb)
 
         # 主区域
@@ -520,21 +481,6 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
-        # 2b. 处理 QQ 待发送消息队列（从 tool 中入队，在主线程统一发送）
-        try:
-            while _tt._PENDING_QQ_MESSAGES:
-                qq = _tt._PENDING_QQ_MESSAGES.pop(0)
-                uid = qq.get("user_id", 0)
-                msg = qq.get("message", "")
-                img_path = qq.get("image_path", "")
-                if uid and self._qq_bridge.is_running:
-                    if msg:
-                        self._qq_bridge.send_private_msg(uid, msg)
-                    if img_path and os.path.exists(img_path):
-                        self._qq_bridge.send_image(uid, img_path)
-        except Exception:
-            pass
-
         # 3. 存文字回复到历史（用实际显示的完整文本，不丢内容）
         text_to_store = text or response
         if text_to_store:
@@ -625,90 +571,24 @@ class MainWindow(QMainWindow):
         self._qq_signals.got_message.emit(user_id, group_id, message, msg_type)
         return None
 
-    def _get_qq_agent(self, user_id: int) -> 'AgentCore':
-        """获取或创建某个 QQ 用户独立的 AgentCore 实例"""
-        if user_id not in self._qq_agents:
-            agent = AgentCore(memory=self.memory)
-            agent.start_session()
-            self._qq_agents[user_id] = agent
-        return self._qq_agents[user_id]
-
     def _on_qq_message_threadsafe(self, user_id, group_id, message, msg_type):
-        """主线程：每个 QQ 号独立会话，不阻塞 UI"""
+        """主线程：处理 QQ 消息（在主线程运行，可以直接调 UI）"""
         try:
             sender = f"QQ:{user_id}"
             if group_id:
                 sender = f"QQ群{group_id}:{user_id}"
             self.chat_widget.add_message(f"💬 [{sender}] {message}", is_user=True)
 
-            # 获取该 QQ 号独立的 AgentCore
-            qq_agent = self._get_qq_agent(user_id)
-
-            # 检查用户是否有操作电脑的权限
-            restricted = user_id not in config.QQ_ALLOWED_USERS if config.QQ_ALLOWED_USERS else True
-
-            self._qq_thread = QThread(self)
-            # QQ 回复不流式显示到界面（最终一次性显示避免重复）
-            self._qq_worker = QQAgentWorker(qq_agent, message, restricted=restricted, stream_to_ui=False)
-            self._qq_worker.moveToThread(self._qq_thread)
-            self._qq_worker.finished.connect(lambda r: self._on_qq_response(r, user_id, group_id, msg_type))
-            self._qq_worker.error.connect(self._on_qq_error)
-            self._qq_thread.started.connect(self._qq_worker.run)
-            self._qq_thread.finished.connect(self._qq_thread.deleteLater)
-            self._qq_thread.start()
+            # 直接在主线程调六花（会阻塞但QQ消息不多，问题不大）
+            response = self.agent.chat(message)
+            if response:
+                self.chat_widget.add_message(f"💬 [六花→QQ] {response}", is_user=False)
+                if msg_type == "group" and group_id:
+                    self._qq_bridge.send_group_msg(group_id, response)
+                else:
+                    self._qq_bridge.send_private_msg(user_id, response)
         except Exception as e:
             self.chat_widget.add_message(f"💬 QQ消息处理失败: {e}", is_user=False)
-
-    def _on_qq_response(self, response, user_id, group_id, msg_type):
-        """QQ 回复完成 → 显示到界面 + 发送文字/图片到 QQ"""
-        if self._qq_thread:
-            self._qq_thread.quit()
-            self._qq_thread.wait()
-            self._qq_thread = None
-            self._qq_worker = None
-        if response:
-            self.chat_widget.add_message(f"💬 [六花→QQ] {response}", is_user=False)
-            if msg_type == "group" and group_id:
-                self._qq_bridge.send_group_msg(group_id, response)
-            else:
-                self._qq_bridge.send_private_msg(user_id, response)
-
-        # AI 生成的图片也发送到 QQ
-        from brain import tools as _tt
-        while _tt._PENDING_IMAGES:
-            img_path = _tt._PENDING_IMAGES.pop(0)
-            if os.path.exists(img_path):
-                # 显示到本地界面
-                self.chat_widget.add_message("", is_user=False, image_path=img_path)
-                # 发送到 QQ
-                if msg_type == "group" and group_id:
-                    self._qq_bridge.send_group_image(group_id, img_path)
-                else:
-                    self._qq_bridge.send_image(user_id, img_path)
-
-        # 处理 QQ 待发送消息队列
-        from brain import tools as _tt2
-        while _tt2._PENDING_QQ_MESSAGES:
-            qq = _tt2._PENDING_QQ_MESSAGES.pop(0)
-            uid = qq.get("user_id", 0)
-            msg = qq.get("message", "")
-            img_path2 = qq.get("image_path", "")
-            if uid and self._qq_bridge.is_running:
-                if msg:
-                    self._qq_bridge.send_private_msg(uid, msg)
-                if img_path2 and os.path.exists(img_path2):
-                    self._qq_bridge.send_image(uid, img_path2)
-
-
-    def _on_qq_error(self, err):
-        """QQ 回复出错"""
-        if self._qq_thread:
-            self._qq_thread.quit()
-            self._qq_thread.wait()
-            self._qq_thread = None
-            self._qq_worker = None
-        self.chat_widget.stop_streaming()
-        self.chat_widget.add_message(f"💬 QQ回复出错: {err}", is_user=False)
 
     def _on_qq_connected(self):
         self._qq_btn.setStyleSheet(
@@ -951,31 +831,24 @@ class MainWindow(QMainWindow):
                 self.agent._history.append({"role": m["role"], "content": m["content"]})
         self.chat_widget.new_session()
         for m in msgs:
-            # 解析 created_at 时间戳
-            try:
-                msg_dt = datetime.strptime(m.get("created_at", ""), "%Y-%m-%d %H:%M")
-            except:
-                msg_dt = None
             if m["role"] == "user":
                 if m["content"].startswith("[图片]"):
                     p = m["content"].replace("[图片]", "", 1).strip()
                     self.chat_widget.add_message(
                         "", is_user=True,
                         image_path=p if os.path.exists(p) else None,
-                        created_at=msg_dt,
                     )
                 else:
-                    self.chat_widget.add_message(m["content"], is_user=True, created_at=msg_dt)
+                    self.chat_widget.add_message(m["content"], is_user=True)
             elif m["role"] == "assistant":
                 if m["content"].startswith("[图片]"):
                     p = m["content"].replace("[图片]", "", 1).strip()
                     self.chat_widget.add_message(
                         "", is_user=False,
                         image_path=p if os.path.exists(p) else None,
-                        created_at=msg_dt,
                     )
                 else:
-                    self.chat_widget.add_message(m["content"], is_user=False, created_at=msg_dt)
+                    self.chat_widget.add_message(m["content"], is_user=False)
         config.save_user_config({"last_session_id": self._session_id})
         return True
 

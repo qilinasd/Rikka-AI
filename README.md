@@ -1,5 +1,10 @@
 # 六花AI (RikkaAI) — 邪王真眼 AI 伙伴
 
+<div align="center">
+<a href="RikkaAI/">项目源码</a> ·
+<a href="RikkaAI/README.md">详细文档</a>
+</div>
+
 一个具有人格设定、长期记忆、主动交互能力的桌面 AI 伙伴，基于大型语言模型构建，以「小鸟游六花」为人格原型。
 
 ## 核心能力
@@ -17,6 +22,7 @@
 ```bash
 cd RikkaAI
 pip install -r requirements.txt
+# 复制配置模板并填入 API Key
 cp config.example.py config.py
 python main.py
 ```
@@ -27,4 +33,4 @@ python main.py
 
 ---
 
-> 项目持续迭代中 🌟
+> 项目持续迭代中，欢迎 star ⭐

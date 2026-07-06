@@ -1,7 +1,6 @@
 """
-RikkaAI - 聊天气泡（支持图片 + QQ式日期分隔）
+RikkaAI - 聊天气泡（支持图片）
 """
-from datetime import datetime
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QScrollArea, QLabel, QHBoxLayout, QFrame
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPixmap
@@ -81,37 +80,6 @@ class StreamingBubble(MessageBubble):
         self.text_label.setText(self._base_text)
 
 
-class DateSeparator(QWidget):
-    """QQ 风格的日期分隔条"""
-    def __init__(self, dt: datetime, parent=None):
-        super().__init__(parent)
-        self.setStyleSheet("background:transparent;")
-        l = QHBoxLayout(self)
-        l.setContentsMargins(0, 8, 0, 8)
-        l.setSpacing(8)
-        line = QFrame()
-        line.setFrameShape(QFrame.HLine)
-        line.setStyleSheet("border:none;border-top:1px solid #2a1050;")
-        line.setFixedHeight(1)
-        l.addWidget(line, 1)
-        label = QLabel(self._format_date(dt))
-        label.setStyleSheet(
-            "color:#5a3a7a;font-size:11px;background:#0f0a18;"
-            "padding:2px 12px;border:1px solid #2a1050;border-radius:10px;"
-        )
-        label.setAlignment(Qt.AlignCenter)
-        l.addWidget(label)
-        l.addWidget(QFrame(), 1)
-        # 让 line 和 label 一样宽
-        # 实际上左右两条线各占 1，label 自适应
-        l.setStretch(0, 1)
-        l.setStretch(2, 1)
-
-    @staticmethod
-    def _format_date(dt: datetime) -> str:
-        return dt.strftime("%Y年%m月%d日 %H:%M")
-
-
 class ChatWidget(QWidget):
     MAX_MESSAGES = 200
 
@@ -119,7 +87,6 @@ class ChatWidget(QWidget):
         super().__init__(parent)
         self.setObjectName("ChatWidget")
         self._streaming_bubble = None
-        self._last_msg_date = None  # 最近一条消息的日期
         self._setup_ui()
 
     def _setup_ui(self):
@@ -143,19 +110,7 @@ class ChatWidget(QWidget):
         b = MessageBubble(w, is_user=False)
         self.message_layout.insertWidget(self.message_layout.count()-1, b)
 
-    def add_message(self, text="", is_user=False, image_path=None, created_at=None):
-        """添加一条消息，自动插入日期分隔"""
-        # 检查日期变化，插入分隔
-        now = created_at if created_at else datetime.now()
-        msg_date = now.date()
-        if self._last_msg_date is not None and msg_date != self._last_msg_date:
-            sep = DateSeparator(now)
-            self.message_layout.insertWidget(self.message_layout.count()-1, sep)
-        elif self._last_msg_date is None:
-            sep = DateSeparator(now)
-            self.message_layout.insertWidget(self.message_layout.count()-1, sep)
-        self._last_msg_date = msg_date
-
+    def add_message(self, text="", is_user=False, image_path=None):
         b = MessageBubble(text, is_user=is_user, image_path=image_path)
         self.message_layout.insertWidget(self.message_layout.count()-1, b)
         self._scroll_to_bottom()
@@ -193,7 +148,6 @@ class ChatWidget(QWidget):
 
     def new_session(self):
         self._clear_messages()
-        self._last_msg_date = None
         self._add_welcome()
 
     def _clear_messages(self):
