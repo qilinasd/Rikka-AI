@@ -6,14 +6,14 @@ from datetime import datetime
 import config
 
 def _norm_cat(c): return re.sub(r'([\U0001F000-\U0001FFFF☀-➿⭐❤]) ', r'\1', c)
-ZHIPU_KEY = "2df6241945714db08632ac658d8e893d.JtpBi8ABWxcwLu4O"
 
 def _vision(prompt, path, temp=0.3, maxt=1024):
     if not os.path.exists(path): return "文件不存在"
     with open(path,"rb") as f: b64=base64.b64encode(f.read()).decode()
     import requests
+    zhipu_key = config.ZHIPU_API_KEY
     r=requests.post("https://open.bigmodel.cn/api/paas/v4/chat/completions",
-        headers={"Authorization":f"Bearer {ZHIPU_KEY}","Content-Type":"application/json"},
+        headers={"Authorization":f"Bearer {zhipu_key}","Content-Type":"application/json"},
         json={"model":"glm-4v-flash","messages":[{"role":"user","content":[
             {"type":"text","text":prompt},{"type":"image_url","image_url":{"url":f"data:image/png;base64,{b64}"}}
         ]}],"temperature":temp,"max_tokens":maxt},timeout=30)

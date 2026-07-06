@@ -30,6 +30,7 @@ class SettingsDialog(QDialog):
         outer.addLayout(body,1)
         self._add_page("预设方案",self._build_preset_page())
         self._add_page("回复温度",self._build_temp_page())
+        self._add_page("API 配置",self._build_api_page())
         self._add_page("主动聊天",self._build_proactive_page())
         self._add_page("智能搜图",self._build_smart_search_page())
         self._add_page("行为规则",self._build_persona_page())
@@ -62,6 +63,98 @@ class SettingsDialog(QDialog):
         b.setStyleSheet("QPushButton{background:#5a2a9e;border:1px solid #7a3aba;border-radius:15px;font-size:12px;font-weight:bold;color:#fff}QPushButton:hover{background:#7a3aba}")
         b.setCursor(Qt.PointingHandCursor); b.clicked.connect(lambda:self._so("temperature",self._ts.value()/100))
         sr.addWidget(b); l.addLayout(sr); return p
+
+    # ── API 配置页面 ───────────────────────────────────────────
+
+    def _build_api_page(self):
+        p = QWidget()
+        l = QVBoxLayout(p)
+        l.setContentsMargins(20, 16, 20, 16)
+        l.setSpacing(12)
+
+        lb = QLabel("管理六花各个功能使用的 API 密钥和服务地址")
+        lb.setStyleSheet("color:#5a3a7a;font-size:11px;")
+        l.addWidget(lb)
+
+        # ── 对话 API ──
+        dg = QWidget()
+        dg.setStyleSheet("QWidget{background:#0d0a14;border:1px solid #1f0d38;border-radius:8px;}")
+        dl = QVBoxLayout(dg)
+        dl.setContentsMargins(14, 10, 14, 10)
+        dl.setSpacing(8)
+        dt = QLabel("💬 对话 API（DeepSeek）")
+        dt.setStyleSheet("color:#c084fc;font-size:12px;font-weight:bold;")
+        dl.addWidget(dt)
+        dn = QLabel("在「预设方案」页面管理多组对话 API 配置")
+        dn.setStyleSheet("color:#3a2a4a;font-size:10px;")
+        dl.addWidget(dn)
+        l.addWidget(dg)
+
+        # ── 视觉 API ──
+        vg = QWidget()
+        vg.setStyleSheet("QWidget{background:#0d0a14;border:1px solid #1f0d38;border-radius:8px;}")
+        vl = QVBoxLayout(vg)
+        vl.setContentsMargins(14, 10, 14, 10)
+        vl.setSpacing(8)
+        vt = QLabel("👁 视觉 API（智谱 GLM-4V-Flash）")
+        vt.setStyleSheet("color:#c084fc;font-size:12px;font-weight:bold;")
+        vl.addWidget(vt)
+        vd = QLabel("用于：看图描述、OCR 文字识别、游戏攻略分析、智能搜图筛选")
+        vd.setStyleSheet("color:#5a3a7a;font-size:10px;")
+        vl.addWidget(vd)
+        self._zhipu_key = QLineEdit()
+        self._zhipu_key.setPlaceholderText("输入智谱 GLM-4V-Flash 的 API Key")
+        self._zhipu_key.setEchoMode(QLineEdit.Password)
+        self._zhipu_key.setStyleSheet(
+            "QLineEdit{background:#1a0d2e;border:1px solid #2a1050;border-radius:6px;"
+            "padding:7px 10px;color:#e0d0f0;font-size:12px}"
+            "QLineEdit:focus{border-color:#7a3aba}"
+        )
+        vl.addWidget(self._zhipu_key)
+        l.addWidget(vg)
+
+        # ── 搜索 API ──
+        sg = QWidget()
+        sg.setStyleSheet("QWidget{background:#0d0a14;border:1px solid #1f0d38;border-radius:8px;}")
+        sl = QVBoxLayout(sg)
+        sl.setContentsMargins(14, 10, 14, 10)
+        sl.setSpacing(8)
+        st = QLabel("🔍 搜索服务（SearXNG）")
+        st.setStyleSheet("color:#c084fc;font-size:12px;font-weight:bold;")
+        sl.addWidget(st)
+        sd = QLabel("用于：网络搜索、搜图、查新闻")
+        sd.setStyleSheet("color:#5a3a7a;font-size:10px;")
+        sl.addWidget(sd)
+        sr_row = QHBoxLayout(); sr_row.setSpacing(8)
+        sr_row.addWidget(QLabel("服务地址"))
+        self._searxng_url = QLineEdit()
+        self._searxng_url.setPlaceholderText("http://localhost:8080")
+        self._searxng_url.setStyleSheet(
+            "QLineEdit{background:#1a0d2e;border:1px solid #2a1050;border-radius:6px;"
+            "padding:7px 10px;color:#e0d0f0;font-size:12px}"
+            "QLineEdit:focus{border-color:#7a3aba}"
+        )
+        sr_row.addWidget(self._searxng_url, 1)
+        sl.addLayout(sr_row)
+        l.addWidget(sg)
+
+        l.addStretch()
+
+        # 保存按钮
+        sr = QHBoxLayout(); sr.addStretch()
+        b = QPushButton("保存 API 配置"); b.setFixedSize(120, 30)
+        b.setStyleSheet("QPushButton{background:#5a2a9e;border:1px solid #7a3aba;border-radius:15px;font-size:12px;font-weight:bold;color:#fff}QPushButton:hover{background:#7a3aba}")
+        b.setCursor(Qt.PointingHandCursor); b.clicked.connect(self._save_api)
+        sr.addWidget(b); l.addLayout(sr)
+        return p
+
+    def _save_api(self):
+        config.save_user_config({
+            "zhipu_api_key": self._zhipu_key.text().strip(),
+            "searxng_base_url": self._searxng_url.text().strip(),
+        })
+        self.config_changed.emit()
+        QMessageBox.information(self, "已保存", "API 配置已更新")
 
     def _build_proactive_page(self):
         p=QWidget(); l=QVBoxLayout(p); l.setContentsMargins(20,16,20,16); l.setSpacing(10)
@@ -138,6 +231,8 @@ class SettingsDialog(QDialog):
         self._pcb.setChecked(config.PROACTIVE_ENABLED)
         self._slack_cb.setChecked(config.PROACTIVE_SLACK_ENABLED); self._sp.setValue(config.PROACTIVE_SLACK_PROB); self._rt.setValue(config.ROTATION_THRESHOLD); self._ascb.setChecked(config.AUTO_START)
         self._smr.setValue(config.SMART_SEARCH_MAX_RESULTS); self._sma.setValue(config.SMART_SEARCH_MAX_ANALYZE); self._smc.setValue(config.SMART_SEARCH_MAX_CANDIDATES)
+        self._zhipu_key.setText(config.ZHIPU_API_KEY)
+        self._searxng_url.setText(config.SEARXNG_BASE_URL)
         self._refresh_preset_list()
 
     def _refresh_preset_list(self):
