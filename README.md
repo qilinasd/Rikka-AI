@@ -1,36 +1,37 @@
-# 六花AI (RikkaAI) — 邪王真眼 AI 伙伴
+# 六花AI
 
-<div align="center">
-<a href="RikkaAI/">项目源码</a> ·
-<a href="RikkaAI/README.md">详细文档</a>
-</div>
+#### 介绍
+六花AI
 
-一个具有人格设定、长期记忆、主动交互能力的桌面 AI 伙伴，基于大型语言模型构建，以「小鸟游六花」为人格原型。
+#### 软件架构
+软件架构说明
 
-## 核心能力
 
-| 能力 | 说明 |
-|------|------|
-| 🧠 **智能对话** | DeepSeek API，流式输出，Function Calling 42 个工具 |
-| 📚 **多层记忆** | RAG 全文检索 + 知识图谱 + 文件记忆，跨会话持久化 |
-| 👁 **多模态视觉** | GLM-4V-Flash 图像识别、OCR、智能搜图 |
-| 🔄 **主动交互** | AI 自主判断时机与用户互动，情感状态，自我成长记录 |
-| 🎨 **完整 GUI** | PyQt5 构建，9 个交互面板，暗色哥特主题 |
+#### 安装教程
 
-## 快速开始
+1.  xxxx
+2.  xxxx
+3.  xxxx
 
-```bash
-cd RikkaAI
-pip install -r requirements.txt
-# 复制配置模板并填入 API Key
-cp config.example.py config.py
-python main.py
-```
+#### 使用说明
 
-## 技术栈
+1.  xxxx
+2.  xxxx
+3.  xxxx
 
-`Python` `PyQt5` `DeepSeek API` `GLM-4V-Flash` `RAG` `知识图谱` `SQLite` `SearXNG`
+#### 参与贡献
 
----
+1.  Fork 本仓库
+2.  新建 Feat_xxx 分支
+3.  提交代码
+4.  新建 Pull Request
 
-> 项目持续迭代中，欢迎 star ⭐
+
+#### 特技
+
+1.  使用 Readme\_XXX.md 来支持不同的语言，例如 Readme\_en.md, Readme\_zh.md
+2.  Gitee 官方博客 [blog.gitee.com](https://blog.gitee.com)
+3.  你可以 [https://gitee.com/explore](https://gitee.com/explore) 这个地址来了解 Gitee 上的优秀开源项目
+4.  [GVP](https://gitee.com/gvp) 全称是 Gitee 最有价值开源项目，是综合评定出的优秀开源项目
+5.  Gitee 官方提供的使用手册 [https://gitee.com/help](https://gitee.com/help)
+6.  Gitee 封面人物是一档用来展示 Gitee 会员风采的栏目 [https://gitee.com/gitee-stars/](https://gitee.com/gitee-stars/)
