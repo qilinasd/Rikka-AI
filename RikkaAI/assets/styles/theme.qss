@@ -1,0 +1,248 @@
+/* ═══════════════════════════════════════════
+   RikkaAI — 邪王真眼 暗紫主题
+   小鸟游六花 · 自定义QSS样式表
+   ═══════════════════════════════════════════ */
+
+/* ── 全局 ── */
+QMainWindow {
+    background-color: #0d0a14;
+}
+
+QWidget {
+    background-color: transparent;
+    color: #d4c0e0;
+    font-family: "Microsoft YaHei", "微软雅黑", sans-serif;
+}
+
+/* ── 标题栏 ── */
+#TitleBar {
+    background-color: #120b1a;
+    border-bottom: 1px solid #2a1050;
+}
+
+#TitleText {
+    color: #c084fc;
+    font-size: 14px;
+    font-weight: bold;
+    padding-left: 6px;
+}
+
+#TitleSub {
+    color: #5a3a7a;
+    font-size: 11px;
+    padding-left: 4px;
+}
+
+/* ── 状态栏 ── */
+#StatusBar {
+    background-color: #0f0a18;
+    border-top: 1px solid #1f0d38;
+}
+
+#StatusActive {
+    color: #ff69b4;
+    font-size: 14px;
+}
+
+/* ── 分割器 ── */
+QSplitter::handle {
+    background-color: #2a1050;
+    width: 1px;
+}
+
+/* ── 角色面板 ── */
+#CharacterWidget {
+    background-color: #0f0818;
+    border-right: 1px solid #1f0d38;
+}
+
+#CharacterName {
+    color: #e8d0ff;
+    font-size: 18px;
+    font-weight: bold;
+}
+
+#CharacterTitle {
+    color: #c084fc;
+    font-size: 13px;
+    font-weight: bold;
+}
+
+#CharacterSubtitle {
+    color: #7a5aaa;
+    font-size: 11px;
+}
+
+#CharacterQuote {
+    color: #ff69b4;
+    font-size: 12px;
+    font-style: italic;
+    padding: 8px 12px;
+    background-color: #1a0d2e;
+    border: 1px solid #3a1a6e;
+    border-radius: 8px;
+}
+
+/* ── 聊天气泡 ── */
+#ChatWidget {
+    background-color: #0d0a14;
+}
+
+/* 用户消息气泡 */
+#UserBubble {
+    background-color: #1e1040;
+    border: 1px solid #3a1a6e;
+    border-radius: 12px;
+    border-top-right-radius: 2px;
+    padding: 10px 14px;
+    color: #ffd700;
+    font-size: 13px;
+}
+
+/* AI消息气泡 */
+#AiBubble {
+    background-color: #140a20;
+    border: 1px solid #2a1050;
+    border-radius: 12px;
+    border-top-left-radius: 2px;
+    padding: 10px 14px;
+    color: #ffd700;
+    font-size: 13px;
+}
+
+/* 消息标签 */
+#MsgLabel {
+    color: #7a5aaa;
+    font-size: 11px;
+    font-weight: bold;
+}
+
+#MsgTime {
+    color: #3a2a4a;
+    font-size: 10px;
+}
+
+/* ── 输入面板 ── */
+#InputPanel {
+    background-color: #0f0a18;
+    border-top: 1px solid #1f0d38;
+    padding: 8px 12px;
+}
+
+#InputField {
+    background-color: #1a0d2e;
+    border: 1px solid #2a1050;
+    border-radius: 16px;
+    padding: 8px 16px;
+    color: #ffd700;
+    font-size: 13px;
+    min-height: 20px;
+    max-height: 80px;
+    selection-background-color: #3a1a6e;
+}
+
+#InputField:focus {
+    border: 1px solid #7a3aba;
+    background-color: #1f0f38;
+}
+
+#InputField::placeholder {
+    color: #3a2a4a;
+}
+
+/* 发送按钮 */
+#SendButton {
+    background-color: #6a2aba;
+    border: 1px solid #8a4ada;
+    border-radius: 18px;
+    min-width: 80px;
+    max-width: 80px;
+    font-size: 13px;
+    font-weight: bold;
+    color: #ffd700;
+    padding: 4px 8px;
+}
+
+#SendButton:hover {
+    background-color: #8a4ada;
+    border: 1px solid #a06aee;
+    color: #ffd700;
+}
+
+#SendButton:pressed {
+    background-color: #4a1a8a;
+}
+
+/* 工具按钮（语音等） */
+#ToolButton {
+    background-color: transparent;
+    border: 1px solid #2a1050;
+    border-radius: 16px;
+    min-width: 32px;
+    min-height: 32px;
+    max-width: 32px;
+    max-height: 32px;
+    font-size: 14px;
+    color: #5a3a7a;
+}
+
+#ToolButton:hover {
+    background-color: #2d1b4e;
+    border-color: #9b59b6;
+    color: #ffd700;
+}
+
+/* ── 滚动条 ── */
+QScrollBar:vertical {
+    background-color: #0d0a14;
+    width: 6px;
+    border: none;
+}
+
+QScrollBar::handle:vertical {
+    background-color: #2a1050;
+    border-radius: 3px;
+    min-height: 30px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background-color: #4a2080;
+}
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0;
+}
+
+QScrollBar:horizontal {
+    background-color: #0d0a14;
+    height: 6px;
+    border: none;
+}
+
+QScrollBar::handle:horizontal {
+    background-color: #2a1050;
+    border-radius: 3px;
+    min-width: 30px;
+}
+
+QScrollBar::add-line:horizontal,
+QScrollBar::sub-line:horizontal {
+    width: 0;
+}
+
+/* ── 对话框 ── */
+QDialog {
+    background-color: #0f0a18;
+    border: 1px solid #2a1050;
+}
+
+/* ── 工具提示 ── */
+QToolTip {
+    background-color: #1a0d2e;
+    border: 1px solid #5a2a9e;
+    border-radius: 4px;
+    color: #ffd700;
+    font-size: 12px;
+    padding: 4px 8px;
+}

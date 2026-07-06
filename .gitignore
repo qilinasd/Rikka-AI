@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyc
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# API 配置（含 API Key）
+config.py
+
+# 用户记忆 / 数据库
+memory_data/
+*.db
+
+# 对话历史
+conversations/
+
+# 日记
+diaries/
+
+# 摘要
+summaries/
+
+# 记忆文件
+memories/
+
+# 截图
+images/screenshots/
+images/received/
+images/sent/
+images/downloaded/
+
+# Graphify 输出
+graphify-out/
+
+# 简历
+*简历*.docx
+*简历*.pdf
+
+# 六花图片资源
+RikkaAI/assets/images/rikka_*.png
+RikkaAI/assets/images/avatar.png
+RikkaAI/assets/images/background.png
+RikkaAI/assets/images/character_full.png
+
+# 项目根目录图片
+*.png
+*.jpg
+
+# 其他
+.claude/
+.venv/
+venv/
+node_modules/
+*.zip
+installed_skills.json
+
+# MCP 配置（含 API Key）
+.mcp.json
