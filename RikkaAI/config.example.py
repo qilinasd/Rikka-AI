@@ -5,7 +5,7 @@ RikkaAI - 全局配置模板
 import os, json
 from datetime import datetime
 
-APP_NAME = "RikkaAI"; APP_VERSION = "0.1.0"
+APP_NAME = "RikkaAI"; APP_VERSION = "0.2.0"
 
 # ── 对话 API（用于聊天） ──
 MODEL = "deepseek-v4-flash"
@@ -15,6 +15,10 @@ TEMPERATURE = 0.8
 
 # ── 视觉 API（用于看图/OCR/搜图，智谱 GLM-4V-Flash 免费） ──
 ZHIPU_API_KEY = "your-zhipu-api-key-here"
+# 视觉 API 预设（可在设置面板中管理多组配置）
+VISION_API_KEY = ZHIPU_API_KEY
+VISION_MODEL = "glm-4v-flash"
+VISION_API_BASE = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
 
 # ── 搜索服务（SearXNG 自建搜索引擎） ──
 SEARXNG_BASE_URL = "http://localhost:8080"

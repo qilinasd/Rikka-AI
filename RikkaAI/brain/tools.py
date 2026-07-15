@@ -11,10 +11,12 @@ def _vision(prompt, path, temp=0.3, maxt=1024):
     if not os.path.exists(path): return "文件不存在"
     with open(path,"rb") as f: b64=base64.b64encode(f.read()).decode()
     import requests
-    zhipu_key = config.ZHIPU_API_KEY
-    r=requests.post("https://open.bigmodel.cn/api/paas/v4/chat/completions",
-        headers={"Authorization":f"Bearer {zhipu_key}","Content-Type":"application/json"},
-        json={"model":"glm-4v-flash","messages":[{"role":"user","content":[
+    api_key = config.VISION_API_KEY or config.ZHIPU_API_KEY
+    api_base = config.VISION_API_BASE or "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+    model = config.VISION_MODEL or "glm-4v-flash"
+    r=requests.post(api_base,
+        headers={"Authorization":f"Bearer {api_key}","Content-Type":"application/json"},
+        json={"model":model,"messages":[{"role":"user","content":[
             {"type":"text","text":prompt},{"type":"image_url","image_url":{"url":f"data:image/png;base64,{b64}"}}
         ]}],"temperature":temp,"max_tokens":maxt},timeout=30)
     return r.json()["choices"][0]["message"]["content"]
@@ -59,7 +61,11 @@ TOOL_DEFINITIONS = [
     {"type":"function","function":{"name":"get_weather","description":"查询某个地点的当前天气和温度。不传地点则根据IP自动定位到当前城市。","parameters":{"type":"object","properties":{"location":{"type":"string","description":"城市名，如：北京、东京、London（可选，不传则自动定位）"}},"required":[]}}},
     {"type":"function","function":{"name":"search_news","description":"搜索最新新闻资讯，返回标题和摘要。适合了解时事、行业动态、热点话题。","parameters":{"type":"object","properties":{"query":{"type":"string","description":"新闻搜索关键词"},"max_results":{"type":"number"}},"required":["query"]}}},
     {"type":"function","function":{"name":"search_wiki","description":"查询维基百科（Wikipedia）的内容摘要。适合获取知识性、百科类信息。","parameters":{"type":"object","properties":{"query":{"type":"string","description":"要查询的关键词"}},"required":["query"]}}},
+    # ── QQ 消息发送 ─────────────────────────────────────────
+    {"type":"function","function":{"name":"send_qq_message","description":"【关键工具】契约者在本地对你说「发QQ消息」「告诉QQ上的我」「发到QQ上」时，你必须调用此工具把消息发到契约者的QQ！不调用的话契约者就收不到消息！这是契约者给你下达的指令，一定要执行！参数message写要发的内容，user_id可省略。","parameters":{"type":"object","properties":{"message":{"type":"string","description":"要发送的 QQ 消息内容"},"user_id":{"type":"number","description":"可选的 QQ 号，不填则发给默认契约者"}},"required":["message"]}}},
     # ═══════════════════════════════════════════════════════════════
+    {"type":"function","function":{"name":"send_qq_image","description":"【关键工具】契约者在本地对你说「把图发到QQ」「发这张图到QQ上」时，你必须调用此工具把图片发到契约者的QQ！参数image_path填图片路径，caption可选配图文字，user_id可省略。","parameters":{"type":"object","properties":{"image_path":{"type":"string","description":"图片文件的完整路径"},"caption":{"type":"string","description":"可选，配图文字说明"},"user_id":{"type":"number","description":"可选的 QQ 号，不填则发给契约者"}},"required":["image_path"]}}},
+
     #  主动性工具（链式主动 + 临时回访 + 备忘录 + 人设成长）
     # ═══════════════════════════════════════════════════════════════
     {"type":"function","function":{"name":"set_proactive_timer","description":"【核心主动性】设置下一次主动找契约者的定时器。每次链式主动触发后你必须调用本工具重建链条。白天(8-23点)设10-60分钟，深夜(23-8点)设2-7小时，每次加随机性。","parameters":{"type":"object","properties":{"delay_minutes":{"type":"number","description":"多少分钟后主动找契约者"},"reason":{"type":"string","description":"为什么设这个时间？你的考虑是什么"}},"required":["delay_minutes","reason"]}}},
@@ -159,7 +165,16 @@ def _read_summaries(args,**kwargs):
 
 _PENDING_IMAGES = []
 _PENDING_TIMERS = []  # 主动定时器队列：[{"type":"proactive"|"follow_up", "delay":分钟, "reason":"..."}]
+_PENDING_QQ_MESSAGES = []  # QQ 待发送消息队列：[{"user_id":int, "message":str, "msg_type":str}]
 _STOP_REQUESTED = False  # 全局停止信号
+
+# QQ 桥接引用（由 main_window 设置，用于发送 QQ 消息）
+_QQ_BRIDGE = None
+
+def set_qq_bridge(bridge):
+    """设置 QQ 桥接实例，供工具发送 QQ 消息"""
+    global _QQ_BRIDGE
+    _QQ_BRIDGE = bridge
 
 def request_stop():
     """请求停止当前正在执行的操作（game_play等）"""
@@ -168,6 +183,7 @@ def request_stop():
     # 清空待处理图片和定时器，让界面恢复
     _PENDING_IMAGES.clear()
     _PENDING_TIMERS.clear()
+    _PENDING_QQ_MESSAGES.clear()
 
 def clear_stop():
     """清除停止信号"""
@@ -1004,6 +1020,65 @@ def _update_diary(args, **kwargs):
     except Exception as e:
         return f"❌ 日记记录失败：{e}"
 
+def _send_qq_message(args, **kwargs):
+    """发送 QQ 消息工具——先直发，失败则入队"""
+    message = args.get("message", "")
+    user_id = args.get("user_id", 0)
+    if not message:
+        return "❌ 没有消息内容"
+    if _QQ_BRIDGE is None:
+        return "❌ QQ 桥接未连接"
+    try:
+        if not _QQ_BRIDGE.is_running:
+            return "❌ QQ 桥接不在运行状态"
+        if not user_id:
+            allowed = config.get_qq_allowed_users()
+            if allowed:
+                user_id = allowed[0]
+            else:
+                return "❌ 没有可发送的 QQ 号"
+        # 异步直发（不等响应，不阻塞后台线程）
+        ok = _QQ_BRIDGE.send_private_msg_async(int(user_id), message)
+        if ok:
+            return f"✅ 已发送 QQ 消息给 {user_id}"
+        # 直发失败，入队等主线程重试
+        _PENDING_QQ_MESSAGES.append({"user_id": int(user_id), "message": message})
+        return f"✅ 消息已加入发送队列，即将重试发送给 {user_id}"
+    except Exception as e:
+        return f"❌ QQ 消息发送异常: {e}"
+
+def _send_qq_image(args, **kwargs):
+    """发送 QQ 图片工具——先直发，失败则入队"""
+    image_path = args.get("image_path", "")
+    caption = args.get("caption", "")
+    user_id = args.get("user_id", 0)
+    if not image_path or not os.path.exists(image_path):
+        return f"❌ 图片文件不存在: {image_path}"
+    if _QQ_BRIDGE is None:
+        return "❌ QQ 桥接未连接"
+    try:
+        if not _QQ_BRIDGE.is_running:
+            return "❌ QQ 桥接不在运行状态"
+        if not user_id:
+            allowed = config.get_qq_allowed_users()
+            if allowed:
+                user_id = allowed[0]
+            else:
+                return "❌ 没有可发送的 QQ 号"
+        # 异步直发（不等响应，不阻塞后台线程）
+        if caption:
+            _QQ_BRIDGE.send_private_msg_async(int(user_id), caption)
+        # 异步发图片（消息段格式，不等响应）
+        ok = _QQ_BRIDGE.send_image_async(int(user_id), image_path)
+        if ok:
+            return f"✅ 图片已发送到 QQ {user_id}"
+        # 直发失败，入队等主线程重试
+        _PENDING_QQ_MESSAGES.append({"user_id": int(user_id), "image_path": image_path})
+        return f"✅ 图片已加入发送队列，即将重试发送给 {user_id}"
+    except Exception as e:
+        return f"❌ QQ 图片发送异常: {e}"
+
+
 _HANDLERS = {
     "read_file":_read_file,"write_file":_write_file,"edit_file":_edit_file,
     "list_directory":_list_directory,"search_files":_search_files,"grep_file":_grep_file,
@@ -1020,4 +1095,6 @@ _HANDLERS = {
     # 主动性工具
     "set_proactive_timer":_set_proactive_timer,"set_follow_up":_set_follow_up,"cancel_follow_up":_cancel_follow_up,
     "write_to_memo":_write_to_memo,"append_self_discovery":_append_self_discovery,"update_diary":_update_diary,
+    # QQ 消息
+    "send_qq_message":_send_qq_message,"send_qq_image":_send_qq_image,
 }

@@ -28,26 +28,20 @@ class SettingsDialog(QDialog):
         self._nav.itemClicked.connect(self._switch_page); body.addWidget(self._nav)
         self._pages=QStackedWidget(); self._pages.setStyleSheet("background:transparent;"); body.addWidget(self._pages,1)
         outer.addLayout(body,1)
-        self._add_page("预设方案",self._build_preset_page())
         self._add_page("回复温度",self._build_temp_page())
         self._add_page("API 配置",self._build_api_page())
         self._add_page("主动聊天",self._build_proactive_page())
         self._add_page("智能搜图",self._build_smart_search_page())
         self._add_page("行为规则",self._build_persona_page())
+        self._add_page("QQ 桥接",self._build_qq_page())
         self._nav.setCurrentRow(0)
 
     def _add_page(self,n,w): self._nav.addItem(QListWidgetItem(n)); self._pages.addWidget(w)
     def _switch_page(self,i): self._pages.setCurrentIndex(self._nav.row(i))
 
     def _build_preset_page(self):
-        p=QWidget(); l=QVBoxLayout(p); l.setContentsMargins(20,16,20,16); l.setSpacing(10)
-        h=QHBoxLayout(); lb=QLabel("多组API配置快速切换"); lb.setStyleSheet("color:#5a3a7a;font-size:11px;"); h.addWidget(lb); h.addStretch()
-        self._ba=self._msb("+ 添加",self._on_add_preset); h.addWidget(self._ba)
-        self._bd=self._msb("× 删除",self._on_del_preset); h.addWidget(self._bd); l.addLayout(h)
-        self._pl=QListWidget()
-        self._pl.setStyleSheet("QListWidget{background:#1a0d2e;border:1px solid #2a1050;border-radius:6px;padding:4px}QListWidget::item{border-radius:4px}QListWidget::item:selected{background:transparent}")
-        l.addWidget(self._pl,1)
-        n=QLabel("点[管理]编辑API，点[使用]切换"); n.setStyleSheet("color:#3a2a4a;font-size:10px;"); l.addWidget(n); return p
+        """(已废弃 — 预设管理已移到 API 配置页面内)"""
+        return QWidget()
 
     def _build_temp_page(self):
         p=QWidget(); l=QVBoxLayout(p); l.setContentsMargins(20,16,20,16); l.setSpacing(16)
@@ -69,88 +63,163 @@ class SettingsDialog(QDialog):
     def _build_api_page(self):
         p = QWidget()
         l = QVBoxLayout(p)
-        l.setContentsMargins(20, 16, 20, 16)
-        l.setSpacing(12)
+        l.setContentsMargins(0, 0, 0, 0)
+        l.setSpacing(0)
 
-        lb = QLabel("管理六花各个功能使用的 API 密钥和服务地址")
-        lb.setStyleSheet("color:#5a3a7a;font-size:11px;")
-        l.addWidget(lb)
+        # ── 三个功能切换按钮 ──
+        tab_bar = QWidget()
+        tab_bar.setStyleSheet("background-color:#120b1a; border-bottom: 1px solid #2a1050;")
+        tab_bar.setFixedHeight(44)
+        tab_l = QHBoxLayout(tab_bar)
+        tab_l.setContentsMargins(12, 0, 12, 0)
+        tab_l.setSpacing(4)
 
-        # ── 对话 API ──
-        dg = QWidget()
-        dg.setStyleSheet("QWidget{background:#0d0a14;border:1px solid #1f0d38;border-radius:8px;}")
-        dl = QVBoxLayout(dg)
-        dl.setContentsMargins(14, 10, 14, 10)
-        dl.setSpacing(8)
-        dt = QLabel("💬 对话 API（DeepSeek）")
-        dt.setStyleSheet("color:#c084fc;font-size:12px;font-weight:bold;")
-        dl.addWidget(dt)
-        dn = QLabel("在「预设方案」页面管理多组对话 API 配置")
-        dn.setStyleSheet("color:#3a2a4a;font-size:10px;")
-        dl.addWidget(dn)
-        l.addWidget(dg)
-
-        # ── 视觉 API ──
-        vg = QWidget()
-        vg.setStyleSheet("QWidget{background:#0d0a14;border:1px solid #1f0d38;border-radius:8px;}")
-        vl = QVBoxLayout(vg)
-        vl.setContentsMargins(14, 10, 14, 10)
-        vl.setSpacing(8)
-        vt = QLabel("👁 视觉 API（智谱 GLM-4V-Flash）")
-        vt.setStyleSheet("color:#c084fc;font-size:12px;font-weight:bold;")
-        vl.addWidget(vt)
-        vd = QLabel("用于：看图描述、OCR 文字识别、游戏攻略分析、智能搜图筛选")
-        vd.setStyleSheet("color:#5a3a7a;font-size:10px;")
-        vl.addWidget(vd)
-        self._zhipu_key = QLineEdit()
-        self._zhipu_key.setPlaceholderText("输入智谱 GLM-4V-Flash 的 API Key")
-        self._zhipu_key.setEchoMode(QLineEdit.Password)
-        self._zhipu_key.setStyleSheet(
-            "QLineEdit{background:#1a0d2e;border:1px solid #2a1050;border-radius:6px;"
-            "padding:7px 10px;color:#e0d0f0;font-size:12px}"
-            "QLineEdit:focus{border-color:#7a3aba}"
+        btn_style_on = (
+            "QPushButton{background:#2a1050;border:1px solid #7a3aba;border-radius:8px;"
+            "font-size:12px;font-weight:bold;color:#c084fc;padding:6px 16px}"
+            "QPushButton:hover{background:#3a1a6e;color:#ffd700}"
         )
-        vl.addWidget(self._zhipu_key)
-        l.addWidget(vg)
+        btn_style_off = (
+            "QPushButton{background:transparent;border:1px solid #1f0d38;border-radius:8px;"
+            "font-size:12px;color:#5a3a7a;padding:6px 16px}"
+            "QPushButton:hover{background:#1a0d2e;border-color:#5a2a9e;color:#c084fc}"
+        )
 
-        # ── 搜索 API ──
-        sg = QWidget()
-        sg.setStyleSheet("QWidget{background:#0d0a14;border:1px solid #1f0d38;border-radius:8px;}")
-        sl = QVBoxLayout(sg)
-        sl.setContentsMargins(14, 10, 14, 10)
-        sl.setSpacing(8)
-        st = QLabel("🔍 搜索服务（SearXNG）")
-        st.setStyleSheet("color:#c084fc;font-size:12px;font-weight:bold;")
-        sl.addWidget(st)
-        sd = QLabel("用于：网络搜索、搜图、查新闻")
-        sd.setStyleSheet("color:#5a3a7a;font-size:10px;")
-        sl.addWidget(sd)
-        sr_row = QHBoxLayout(); sr_row.setSpacing(8)
-        sr_row.addWidget(QLabel("服务地址"))
+        self._api_btns = []
+        for emoji, label in [("💬", "对话API"), ("👁", "视觉API"), ("🔍", "搜索服务")]:
+            btn = QPushButton(f"{emoji} {label}")
+            btn.setFixedHeight(30)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setStyleSheet(btn_style_off)
+            btn.clicked.connect(lambda checked, l=label: self._switch_api_tab(l))
+            tab_l.addWidget(btn)
+            self._api_btns.append(btn)
+        tab_l.addStretch()
+        l.addWidget(tab_bar)
+
+        # ── 内容区（QStackedWidget 切换不同 API 的配置） ──
+        self._api_stack = QStackedWidget()
+        self._api_stack.setStyleSheet("background:transparent;")
+
+        # 页面0: 对话API（内嵌预设管理）
+        chat_page = QWidget()
+        cl = QVBoxLayout(chat_page)
+        cl.setContentsMargins(20, 16, 20, 16)
+        cl.setSpacing(10)
+        cl.addWidget(QLabel("💬 对话 API 用于六花和你聊天交流"))
+        # 预设列表
+        ph = QHBoxLayout()
+        plb = QLabel("多组API配置快速切换")
+        plb.setStyleSheet("color:#5a3a7a;font-size:11px;")
+        ph.addWidget(plb); ph.addStretch()
+        self._chat_add_btn = self._msb("+ 添加", self._on_add_preset)
+        ph.addWidget(self._chat_add_btn)
+        self._chat_del_btn = self._msb("× 删除", self._on_del_preset)
+        ph.addWidget(self._chat_del_btn)
+        cl.addLayout(ph)
+        self._pl = QListWidget()
+        self._pl.setStyleSheet("QListWidget{background:#1a0d2e;border:1px solid #2a1050;border-radius:6px;padding:4px}QListWidget::item{border-radius:4px}QListWidget::item:selected{background:transparent}")
+        cl.addWidget(self._pl, 1)
+        pn = QLabel("点[管理]编辑API，点[使用]切换")
+        pn.setStyleSheet("color:#3a2a4a;font-size:10px;")
+        cl.addWidget(pn)
+        self._api_stack.addWidget(chat_page)
+
+        # 页面1: 视觉API（内嵌视觉预设管理）
+        vision_page = QWidget()
+        vl = QVBoxLayout(vision_page)
+        vl.setContentsMargins(20, 16, 20, 16)
+        vl.setSpacing(10)
+        vl.addWidget(QLabel("👁 视觉 API 用于：看图描述、OCR 文字识别、游戏攻略分析、智能搜图"))
+        # 当前使用中的视觉配置
+        cur_frame = QWidget()
+        cur_frame.setStyleSheet("QWidget{background:#0d0a14;border:1px solid #1f0d38;border-radius:8px;}")
+        cur_l = QVBoxLayout(cur_frame)
+        cur_l.setContentsMargins(12, 8, 12, 8)
+        self._vision_cur_label = QLabel("")
+        self._vision_cur_label.setStyleSheet("color:#c084fc;font-size:11px;")
+        cur_l.addWidget(self._vision_cur_label)
+        vl.addWidget(cur_frame)
+        # 视觉预设列表
+        vh = QHBoxLayout()
+        vlb = QLabel("多组视觉API配置快速切换")
+        vlb.setStyleSheet("color:#5a3a7a;font-size:11px;")
+        vh.addWidget(vlb); vh.addStretch()
+        self._vision_add_btn = self._msb("+ 添加", self._on_add_vision_preset)
+        vh.addWidget(self._vision_add_btn)
+        self._vision_del_btn = self._msb("× 删除", self._on_del_vision_preset)
+        vh.addWidget(self._vision_del_btn)
+        vl.addLayout(vh)
+        self._vpl = QListWidget()
+        self._vpl.setStyleSheet("QListWidget{background:#1a0d2e;border:1px solid #2a1050;border-radius:6px;padding:4px}QListWidget::item{border-radius:4px}QListWidget::item:selected{background:transparent}")
+        vl.addWidget(self._vpl, 1)
+        vn = QLabel("点[管理]编辑配置，点[使用]切换视觉API")
+        vn.setStyleSheet("color:#3a2a4a;font-size:10px;")
+        vl.addWidget(vn)
+        self._api_stack.addWidget(vision_page)
+
+        # 页面2: 搜索服务
+        search_page = QWidget()
+        sl = QVBoxLayout(search_page)
+        sl.setContentsMargins(20, 20, 20, 20)
+        sl.setSpacing(12)
+        sl.addWidget(QLabel("搜索服务用于：网络搜索、搜图、查新闻、查百科"))
+        sl.addWidget(QLabel("服务地址"))
         self._searxng_url = QLineEdit()
         self._searxng_url.setPlaceholderText("http://localhost:8080")
         self._searxng_url.setStyleSheet(
             "QLineEdit{background:#1a0d2e;border:1px solid #2a1050;border-radius:6px;"
-            "padding:7px 10px;color:#e0d0f0;font-size:12px}"
+            "padding:8px 12px;color:#e0d0f0;font-size:12px}"
             "QLineEdit:focus{border-color:#7a3aba}"
         )
-        sr_row.addWidget(self._searxng_url, 1)
-        sl.addLayout(sr_row)
-        l.addWidget(sg)
+        sl.addWidget(self._searxng_url)
+        sl.addStretch()
+        self._api_stack.addWidget(search_page)
 
-        l.addStretch()
+        l.addWidget(self._api_stack, 1)
 
-        # 保存按钮
-        sr = QHBoxLayout(); sr.addStretch()
-        b = QPushButton("保存 API 配置"); b.setFixedSize(120, 30)
-        b.setStyleSheet("QPushButton{background:#5a2a9e;border:1px solid #7a3aba;border-radius:15px;font-size:12px;font-weight:bold;color:#fff}QPushButton:hover{background:#7a3aba}")
-        b.setCursor(Qt.PointingHandCursor); b.clicked.connect(self._save_api)
-        sr.addWidget(b); l.addLayout(sr)
+        # ── 底部保存按钮 ──
+        bottom = QWidget()
+        bottom.setFixedHeight(56)
+        bl = QHBoxLayout(bottom)
+        bl.setContentsMargins(20, 8, 20, 8)
+        bl.addStretch()
+        save_btn = QPushButton("💾 保存 API 配置")
+        save_btn.setFixedSize(130, 30)
+        save_btn.setStyleSheet(
+            "QPushButton{background:#5a2a9e;border:1px solid #7a3aba;border-radius:15px;"
+            "font-size:12px;font-weight:bold;color:#fff}"
+            "QPushButton:hover{background:#7a3aba}"
+        )
+        save_btn.setCursor(Qt.PointingHandCursor)
+        save_btn.clicked.connect(self._save_api)
+        bl.addWidget(save_btn)
+        l.addWidget(bottom)
+
+        # 默认选中视觉API（因为可配置项在那里）
+        self._switch_api_tab("视觉API")
         return p
+
+    def _switch_api_tab(self, label):
+        """切换 API 子页面"""
+        btn_style_on = (
+            "QPushButton{background:#2a1050;border:1px solid #7a3aba;border-radius:8px;"
+            "font-size:12px;font-weight:bold;color:#c084fc;padding:6px 16px}"
+        )
+        btn_style_off = (
+            "QPushButton{background:transparent;border:1px solid #1f0d38;border-radius:8px;"
+            "font-size:12px;color:#5a3a7a;padding:6px 16px}"
+        )
+        mapping = {"对话API": 0, "视觉API": 1, "搜索服务": 2}
+        for btn in self._api_btns:
+            btn.setStyleSheet(btn_style_off)
+        idx = mapping.get(label, 0)
+        if idx < len(self._api_btns):
+            self._api_btns[idx].setStyleSheet(btn_style_on)
+        self._api_stack.setCurrentIndex(idx)
 
     def _save_api(self):
         config.save_user_config({
-            "zhipu_api_key": self._zhipu_key.text().strip(),
             "searxng_base_url": self._searxng_url.text().strip(),
         })
         self.config_changed.emit()
@@ -231,9 +300,10 @@ class SettingsDialog(QDialog):
         self._pcb.setChecked(config.PROACTIVE_ENABLED)
         self._slack_cb.setChecked(config.PROACTIVE_SLACK_ENABLED); self._sp.setValue(config.PROACTIVE_SLACK_PROB); self._rt.setValue(config.ROTATION_THRESHOLD); self._ascb.setChecked(config.AUTO_START)
         self._smr.setValue(config.SMART_SEARCH_MAX_RESULTS); self._sma.setValue(config.SMART_SEARCH_MAX_ANALYZE); self._smc.setValue(config.SMART_SEARCH_MAX_CANDIDATES)
-        self._zhipu_key.setText(config.ZHIPU_API_KEY)
         self._searxng_url.setText(config.SEARXNG_BASE_URL)
         self._refresh_preset_list()
+        self._refresh_vision_preset_list()
+        self._refresh_qq_user_list()
 
     def _refresh_preset_list(self):
         self._pl.clear()
@@ -263,6 +333,54 @@ class SettingsDialog(QDialog):
         w=self._pl.itemWidget(c); n=w._data["name"] if w else c.text()
         if QMessageBox.question(self,"确认",f"删除「{n}」？",QMessageBox.Yes|QMessageBox.No)==QMessageBox.Yes:
             config.delete_preset(n); self._refresh_preset_list()
+
+    # ── 视觉 API 预设操作 ────────────────────────────────────────
+
+    def _refresh_vision_preset_list(self):
+        self._vpl.clear()
+        from gui.settings_dialog import PresetItemWidget
+        for p in config.get_vision_presets():
+            i=QListWidgetItem(); w=PresetItemWidget(p)
+            w.manage_clicked.connect(self._on_manage_vision_preset); w.use_clicked.connect(self._on_use_vision_preset)
+            i.setSizeHint(w.sizeHint()); self._vpl.addItem(i); self._vpl.setItemWidget(i,w)
+        self._update_vision_cur_label()
+
+    def _update_vision_cur_label(self):
+        key_masked = (config.VISION_API_KEY[:8] + "..." + config.VISION_API_KEY[-4:]) if len(config.VISION_API_KEY) > 16 else "未设置"
+        self._vision_cur_label.setText(f"✦ 当前使用: {config.VISION_MODEL}  |  Key: {key_masked}")
+
+    def _on_manage_vision_preset(self, d):
+        from gui.settings_dialog import VisionPresetEditDialog
+        dlg = VisionPresetEditDialog(d["name"], d.get("api_key",""), d.get("model",""), d.get("api_base",""), self)
+        if dlg.exec_() == QDialog.Accepted:
+            self._refresh_vision_preset_list()
+
+    def _on_use_vision_preset(self, d):
+        ok = config.save_user_config({
+            "vision_api_key": d.get("api_key",""),
+            "vision_model": d.get("model",""),
+            "vision_api_base": d.get("api_base",""),
+        })
+        if ok:
+            self.config_changed.emit()
+            self._update_vision_cur_label()
+            QMessageBox.information(self, "已切换", f"视觉 API 已切换到: {d.get('name','')}")
+        else:
+            QMessageBox.warning(self, "失败", "配置保存失败")
+
+    def _on_add_vision_preset(self):
+        n, ok = QInputDialog.getText(self, "添加视觉预设", "预设名称：", QLineEdit.Normal, "")
+        if ok and n.strip():
+            config.add_vision_preset(n.strip(), "", "", "")
+            self._refresh_vision_preset_list()
+
+    def _on_del_vision_preset(self):
+        c = self._vpl.currentItem()
+        if not c: return
+        w = self._vpl.itemWidget(c); n = w._data["name"] if w else c.text()
+        if QMessageBox.question(self, "确认", f"删除视觉预设「{n}」？", QMessageBox.Yes|QMessageBox.No) == QMessageBox.Yes:
+            config.delete_vision_preset(n)
+            self._refresh_vision_preset_list()
 
     def _utl(self): self._tl.setText(f"{self._ts.value()/100:.2f}")
     def _so(self,k,v): config.save_user_config({k:v}); QMessageBox.information(self,"已保存","已更新")
@@ -359,6 +477,104 @@ class SettingsDialog(QDialog):
         })
         self.config_changed.emit()
         QMessageBox.information(self, "已保存", "智能搜图设置已更新")
+
+    # ── QQ 桥接页面 ─────────────────────────────────────────────
+
+    def _build_qq_page(self):
+        p = QWidget()
+        l = QVBoxLayout(p)
+        l.setContentsMargins(20, 16, 20, 16)
+        l.setSpacing(12)
+
+        lb = QLabel("💬 设置哪些 QQ 好友可以操作你的电脑")
+        lb.setStyleSheet("color:#c084fc;font-size:12px;font-weight:bold;")
+        l.addWidget(lb)
+
+        note = QLabel(
+            "「操作电脑」包括：截图、按键、鼠标点击、打字、运行程序、文件读写等。\n"
+            "不在列表中的 QQ 号只能和六花纯聊天，无法控制电脑。\n"
+            "留空 = 所有 QQ 好友都只能纯聊天。"
+        )
+        note.setStyleSheet("color:#5a3a7a;font-size:10px;line-height:1.4;")
+        note.setWordWrap(True)
+        l.addWidget(note)
+
+        # 已授权的 QQ 号列表
+        header = QHBoxLayout()
+        header.addWidget(QLabel("允许操作电脑的 QQ 号"))
+        header.addStretch()
+        l.addLayout(header)
+
+        self._qq_user_list = QListWidget()
+        self._qq_user_list.setStyleSheet(
+            "QListWidget{background:#1a0d2e;border:1px solid #2a1050;border-radius:6px;padding:4px}"
+            "QListWidget::item{color:#e0d0f0;font-size:12px;padding:6px 10px;border-radius:4px}"
+            "QListWidget::item:selected{background:#2d1b4e}"
+        )
+        l.addWidget(self._qq_user_list, 1)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        add_btn = self._msb("+ 添加", self._on_add_qq_user)
+        btn_row.addWidget(add_btn)
+        del_btn = self._msb("× 删除", self._on_del_qq_user)
+        btn_row.addWidget(del_btn)
+        l.addLayout(btn_row)
+
+        l.addStretch()
+
+        sr = QHBoxLayout()
+        sr.addStretch()
+        save_btn = QPushButton("💾 保存")
+        save_btn.setFixedSize(100, 30)
+        save_btn.setStyleSheet(
+            "QPushButton{background:#5a2a9e;border:1px solid #7a3aba;border-radius:15px;"
+            "font-size:12px;font-weight:bold;color:#fff}"
+            "QPushButton:hover{background:#7a3aba}"
+        )
+        save_btn.setCursor(Qt.PointingHandCursor)
+        save_btn.clicked.connect(self._save_qq_users)
+        sr.addWidget(save_btn)
+        l.addLayout(sr)
+        return p
+
+    def _refresh_qq_user_list(self):
+        self._qq_user_list.clear()
+        for uid in config.get_qq_allowed_users():
+            self._qq_user_list.addItem(str(uid))
+
+    def _on_add_qq_user(self):
+        uid, ok = QInputDialog.getText(self, "添加QQ号", "请输入QQ号：", QLineEdit.Normal, "")
+        if ok and uid.strip().isdigit():
+            current = config.get_qq_allowed_users()
+            if int(uid.strip()) not in current:
+                current.append(int(uid.strip()))
+                config.set_qq_allowed_users(current)
+            self._refresh_qq_user_list()
+
+    def _on_del_qq_user(self):
+        item = self._qq_user_list.currentItem()
+        if not item:
+            return
+        uid = item.text()
+        if QMessageBox.question(self, "确认", f"删除 QQ 号 {uid} 的权限？",
+                                QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
+            current = config.get_qq_allowed_users()
+            current = [u for u in current if str(u) != uid]
+            config.set_qq_allowed_users(current)
+            self._refresh_qq_user_list()
+
+    def _save_qq_users(self):
+        """从列表控件将当前显示的QQ号保存"""
+        users = []
+        for i in range(self._qq_user_list.count()):
+            try:
+                users.append(int(self._qq_user_list.item(i).text()))
+            except:
+                pass
+        config.set_qq_allowed_users(users)
+        self.config_changed.emit()
+        QMessageBox.information(self, "已保存", "QQ 权限设置已更新")
 
     # ── 人设/行为规则 页面 ────────────────────────────────────
 
@@ -589,6 +805,69 @@ class PresetEditDialog(QDialog):
         if not n: QMessageBox.warning(self,"提示","名称不能为空"); return
         if n!=self._on: config.delete_preset(self._on)
         config.add_preset(n,self._k.text().strip(),self._m.text().strip(),self._b.text().strip()); self.accept()
+
+class VisionPresetEditDialog(QDialog):
+    """编辑视觉 API 预设"""
+    def __init__(self, name, ak="", md="", ab="", parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("编辑视觉预设")
+        self.setFixedSize(400, 290)
+        self.setStyleSheet("QDialog{background:#0f0a18;border:1px solid #2a1050}")
+        self._on = name
+        l = QVBoxLayout(self)
+        l.setContentsMargins(20, 20, 20, 20)
+        l.setSpacing(12)
+        t = QLabel("✏️ 编辑视觉预设")
+        t.setStyleSheet("font-size:15px;font-weight:bold;color:#c084fc;")
+        l.addWidget(t)
+        f = QFormLayout()
+        f.setSpacing(10)
+        f.setLabelAlignment(Qt.AlignRight)
+        s = "QLineEdit{background:#1a0d2e;border:1px solid #2a1050;border-radius:6px;padding:7px 10px;color:#e0d0f0;font-size:12px}QLineEdit:focus{border-color:#7a3aba}QLineEdit::placeholder{color:#3a2a4a}"
+        self._n = QLineEdit(name)
+        self._n.setPlaceholderText("预设名称")
+        self._n.setStyleSheet(s)
+        f.addRow("预设名称", self._n)
+        self._k = QLineEdit(ak)
+        self._k.setEchoMode(QLineEdit.Password)
+        self._k.setPlaceholderText("输入 API Key")
+        self._k.setStyleSheet(s)
+        f.addRow("API Key", self._k)
+        self._m = QLineEdit(md)
+        self._m.setPlaceholderText("glm-4v-flash")
+        self._m.setStyleSheet(s)
+        f.addRow("模型名称", self._m)
+        self._b = QLineEdit(ab)
+        self._b.setPlaceholderText("https://open.bigmodel.cn/api/paas/v4/chat/completions")
+        self._b.setStyleSheet(s)
+        f.addRow("API 地址", self._b)
+        l.addLayout(f)
+        l.addStretch()
+        br = QHBoxLayout()
+        br.addStretch()
+        cancel_btn = QPushButton("取消")
+        cancel_btn.setFixedSize(72, 30)
+        cancel_btn.setStyleSheet("QPushButton{background:transparent;border:1px solid #2a1050;border-radius:15px;font-size:12px;color:#7a5aaa}QPushButton:hover{border-color:#5a2a9e;color:#c084fc}")
+        cancel_btn.setCursor(Qt.PointingHandCursor)
+        cancel_btn.clicked.connect(self.reject)
+        br.addWidget(cancel_btn)
+        save_btn = QPushButton("保存")
+        save_btn.setFixedSize(72, 30)
+        save_btn.setStyleSheet("QPushButton{background:#5a2a9e;border:1px solid #7a3aba;border-radius:15px;font-size:12px;font-weight:bold;color:#fff}QPushButton:hover{background:#7a3aba}")
+        save_btn.setCursor(Qt.PointingHandCursor)
+        save_btn.clicked.connect(self._on_save)
+        br.addWidget(save_btn)
+        l.addLayout(br)
+
+    def _on_save(self):
+        n = self._n.text().strip()
+        if not n:
+            QMessageBox.warning(self, "提示", "名称不能为空")
+            return
+        if n != self._on:
+            config.delete_vision_preset(self._on)
+        config.add_vision_preset(n, self._k.text().strip(), self._m.text().strip(), self._b.text().strip())
+        self.accept()
 
 class PresetItemWidget(QWidget):
     manage_clicked=pyqtSignal(object); use_clicked=pyqtSignal(object)

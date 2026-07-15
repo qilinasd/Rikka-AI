@@ -49,6 +49,13 @@ RikkaAI/assets/images/character_full.png
 # 项目根目录图片
 *.png
 *.jpg
+*.jpeg
+
+# RikkaAI 的图片资源
+RikkaAI/images/downloaded/
+
+# Claude Code 临时文件
+free-claude-code/
 
 # 其他
 .claude/

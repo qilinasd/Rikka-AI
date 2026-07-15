@@ -13,6 +13,14 @@ from brain import graph_memory
 
 MAX_TOOL_ITERATIONS = 100
 
+# 需要限制的电脑操作工具（对未授权QQ用户禁用）
+RESTRICTED_TOOLS = {
+    "screenshot", "send_image", "list_windows", "capture_window",
+    "press_key", "click_mouse", "move_mouse", "type_text",
+    "game_play", "game_guide", "open_app", "write_file", "edit_file",
+    "download_image", "search_images", "search_images_smart",
+}
+
 
 class AgentCore:
     """六花的 AI 核心：对话、记忆、主动性"""
@@ -23,6 +31,19 @@ class AgentCore:
         self._history = []
         self.emotion = EmotionState()
         self._base_prompt = None  # 从 persona 文件缓存的基础 prompt
+        self._restricted_mode = False  # QQ 未授权用户模式
+
+    def set_restricted(self, restricted: bool):
+        """设置受限模式 — 禁用所有电脑操作工具"""
+        self._restricted_mode = restricted
+
+    @property
+    def tool_definitions(self):
+        """获取工具定义列表，受限模式下过滤掉操作类工具"""
+        if not self._restricted_mode:
+            return TOOL_DEFINITIONS
+        return [t for t in TOOL_DEFINITIONS
+                if t.get("function", {}).get("name", "") not in RESTRICTED_TOOLS]
 
     # ------------------------------------------------------------------ #
     #   Prompt 构建（文件驱动 + 实时信息注入）                             #
@@ -84,6 +105,18 @@ class AgentCore:
         es = self.emotion.get_prompt_suffix()
 
         parts = [f"【当前时间】{time_str}"]
+
+        # QQ 消息发送能力
+        qq_users = cfg.get_qq_allowed_users()
+        if qq_users:
+            qq_list = "、".join(str(u) for u in qq_users)
+            parts.append(
+                f"【QQ 消息指令——重要！】当契约者在本地对你说「发QQ消息」「告诉QQ上的我」「发到QQ上」「发个消息到QQ」等类似指令时，你必须调用 send_qq_message 工具把消息发过去！"
+                f"契约者的 QQ 号：{qq_list}（user_id 参数可省略，默认发给他）。"
+                f"如果契约者让你把某张图片发到QQ上，先找到图片路径，再调用 send_qq_image 发过去。"
+                f"注意：不要只口头说「好的我发了」，一定要实际调用工具！只有调用工具契约者才能真正收到消息。"
+            )
+
         if es.strip():
             parts.append(es)
         return "\n".join(parts)
@@ -125,6 +158,15 @@ class AgentCore:
 
         prompt = f"{base}\n\n---\n\n{dyn}"
 
+        # 受限模式下注入安全限制说明
+        if self._restricted_mode:
+            prompt += (
+                "\n\n【⚠️ 安全限制 — 当前对话来自未授权的 QQ 用户】\n"
+                "你当前的对话对象没有操作电脑的权限。\n"
+                "以下操作严禁执行：截图、按键、鼠标点击、打字、运行程序、文件读写、编辑文件、搜图下载。\n"
+                "如果对方提出上述要求，请礼貌告知：「抱歉，你没有操作电脑的权限哦～需要找契约者授权才行 (｡•́︿•̀｡)」"
+            )
+
         # RAG 记忆检索（基于用户输入的关键词）
         r1 = rag_memory.search(text, 3)
         rs = rag_memory.format_for_prompt(r1)
@@ -149,7 +191,7 @@ class AgentCore:
                 if on_stream:
                     stream = self._client.chat.completions.create(
                         model=cfg.MODEL, messages=msgs,
-                        tools=TOOL_DEFINITIONS, temperature=cfg.TEMPERATURE,
+                        tools=self.tool_definitions, temperature=cfg.TEMPERATURE,
                         max_tokens=4096, stream=True,
                     )
                     content_chunks = []
@@ -201,7 +243,7 @@ class AgentCore:
                 else:
                     resp = self._client.chat.completions.create(
                         model=cfg.MODEL, messages=msgs,
-                        tools=TOOL_DEFINITIONS, temperature=cfg.TEMPERATURE,
+                        tools=self.tool_definitions, temperature=cfg.TEMPERATURE,
                         max_tokens=4096,
                     )
                     msg = resp.choices[0].message
