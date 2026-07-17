@@ -46,10 +46,12 @@ RikkaAI/assets/images/avatar.png
 RikkaAI/assets/images/background.png
 RikkaAI/assets/images/character_full.png
 
-# 项目根目录图片
+# 项目根目录图片（保留展示用图片）
 /*.png
 /*.jpg
 /*.jpeg
+!/图片1.png
+!/图片2.png
 
 # RikkaAI 的图片资源
 RikkaAI/images/downloaded/

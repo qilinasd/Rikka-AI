@@ -1,6 +1,10 @@
 # 六花AI (RikkaAI) — 邪王真眼 AI 伙伴
 
 <div align="center">
+
+![预览1](图片1.png)
+![预览2](图片2.png)
+
 <a href="RikkaAI/">项目源码</a> ·
 <a href="RikkaAI/README.md">详细文档</a>
 </div>
