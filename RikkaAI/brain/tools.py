@@ -60,6 +60,12 @@ TOOL_DEFINITIONS = [
     {"type":"function","function":{"name":"search_news","description":"搜索最新新闻资讯，返回标题和摘要。适合了解时事、行业动态、热点话题。","parameters":{"type":"object","properties":{"query":{"type":"string","description":"新闻搜索关键词"},"max_results":{"type":"number"}},"required":["query"]}}},
     {"type":"function","function":{"name":"search_wiki","description":"查询维基百科（Wikipedia）的内容摘要。适合获取知识性、百科类信息。","parameters":{"type":"object","properties":{"query":{"type":"string","description":"要查询的关键词"}},"required":["query"]}}},
     # ═══════════════════════════════════════════════════════════════
+    # ── QQ 消息发送 ─────────────────────────────────────────
+    {"type":"function","function":{"name":"send_qq_message","description":"给契约者的 QQ 发送一条消息。当你想主动告诉契约者什么、或者契约者在 QQ 上找你但你想直接在这里回复时使用。发之前想一想：「这话值不值得发到 QQ 上？」","parameters":{"type":"object","properties":{"message":{"type":"string","description":"要发送的 QQ 消息内容"},"user_id":{"type":"number","description":"可选的 QQ 号，不填则发给契约者自己"}},"required":["message"]}}},
+    {"type":"function","function":{"name":"send_qq_image","description":"给契约者的 QQ 发送一张图片。先截图或下载图片拿到图片路径，再发给契约者。比如：「把我桌面截图发到QQ上」「把这张猫猫图片发给契约者」","parameters":{"type":"object","properties":{"image_path":{"type":"string","description":"图片文件的完整路径"},"caption":{"type":"string","description":"可选，配图文字说明"},"user_id":{"type":"number","description":"可选的 QQ 号，不填则发给契约者"}},"required":["image_path"]}}},
+    # ── 图片生成 ────────────────────────────────────────────
+    {"type":"function","function":{"name":"generate_image","description":"AI 画图！生成图片保存到 images/generated/ 目录，自动显示在聊天窗口+自动发QQ。契约者说画几张就设 n=几（严格按要求的数量，默认1，最多4）","parameters":{"type":"object","properties":{"prompt":{"type":"string","description":"图片描述，越详细越好！比如：一只坐在月亮上的黑猫，星空背景，动漫风格"},"model":{"type":"string","description":"可选，模型名称，默认 agnes-image-2.1-flash"},"n":{"type":"number","description":"契约者要求的图片数量（严格按此值，默认1，最多4）"}},"required":["prompt"]}}},
+
     #  主动性工具（链式主动 + 临时回访 + 备忘录 + 人设成长）
     # ═══════════════════════════════════════════════════════════════
     {"type":"function","function":{"name":"set_proactive_timer","description":"【核心主动性】设置下一次主动找契约者的定时器。每次链式主动触发后你必须调用本工具重建链条。白天(8-23点)设10-60分钟，深夜(23-8点)设2-7小时，每次加随机性。","parameters":{"type":"object","properties":{"delay_minutes":{"type":"number","description":"多少分钟后主动找契约者"},"reason":{"type":"string","description":"为什么设这个时间？你的考虑是什么"}},"required":["delay_minutes","reason"]}}},
@@ -161,6 +167,13 @@ _PENDING_IMAGES = []
 _PENDING_TIMERS = []  # 主动定时器队列：[{"type":"proactive"|"follow_up", "delay":分钟, "reason":"..."}]
 _STOP_REQUESTED = False  # 全局停止信号
 
+# QQ 桥接引用（由 main_window 设置，用于发送 QQ 消息）
+_QQ_BRIDGE = None
+
+def set_qq_bridge(bridge):
+    """设置 QQ 桥接实例，供工具发送 QQ 消息"""
+    global _QQ_BRIDGE
+    _QQ_BRIDGE = bridge
 def request_stop():
     """请求停止当前正在执行的操作（game_play等）"""
     global _STOP_REQUESTED
@@ -1004,6 +1017,144 @@ def _update_diary(args, **kwargs):
     except Exception as e:
         return f"❌ 日记记录失败：{e}"
 
+
+def _send_qq_message(args, **kwargs):
+    """发送 QQ 消息工具"""
+    message = args.get("message", "")
+    user_id = args.get("user_id", 0)
+    if not message:
+        return "❌ 没有消息内容"
+    if _QQ_BRIDGE is None:
+        return "❌ QQ 桥接未连接"
+    try:
+        if not _QQ_BRIDGE.is_running:
+            return "❌ QQ 桥接不在运行状态"
+        if not user_id:
+            allowed = config.get_qq_allowed_users()
+            if allowed:
+                user_id = allowed[0]
+            else:
+                return "❌ 没有可发送的 QQ 号"
+        ok = _QQ_BRIDGE.send_private_msg(int(user_id), message)
+        if ok:
+            return f"✅ 已发送 QQ 消息给 {user_id}"
+        else:
+            return f"❌ QQ 消息发送失败"
+    except Exception as e:
+        return f"❌ QQ 消息发送异常: {e}"
+
+def _send_qq_image(args, **kwargs):
+    """发送 QQ 图片工具"""
+    import os as _os
+    image_path = args.get("image_path", "")
+    caption = args.get("caption", "")
+    user_id = args.get("user_id", 0)
+    if not image_path or not _os.path.exists(image_path):
+        return f"❌ 图片文件不存在: {image_path}"
+    if _QQ_BRIDGE is None:
+        return "❌ QQ 桥接未连接"
+    try:
+        if not _QQ_BRIDGE.is_running:
+            return "❌ QQ 桥接不在运行状态"
+        if not user_id:
+            allowed = config.get_qq_allowed_users()
+            if allowed:
+                user_id = allowed[0]
+            else:
+                return "❌ 没有可发送的 QQ 号"
+        if caption:
+            _QQ_BRIDGE.send_private_msg(int(user_id), caption)
+        ok = _QQ_BRIDGE.send_image(int(user_id), image_path)
+        if ok:
+            return f"✅ 图片已发送到 QQ {user_id}"
+        else:
+            return "❌ 图片发送失败"
+    except Exception as e:
+        return f"❌ QQ 图片发送异常: {e}"
+
+def _generate_image(args, **kwargs):
+    """AI 图片生成工具"""
+    prompt = args.get("prompt", "")
+    model = args.get("model", "agnes-image-2.1-flash")
+    n = int(args.get("n", 1))
+    if not prompt:
+        return "❌ 没有提供图片描述"
+    try:
+        import os as _os, requests, json, base64, re
+        from urllib.parse import quote
+        # 从 presets 查找 Agnes API key
+        api_key = ""
+        for p in config.get_presets():
+            if 'agnes' in p.get('name','').lower():
+                api_key = p.get('api_key', "")
+                break
+        if not api_key:
+            for p in config.get_presets():
+                ak = p.get('api_key', "")
+                if ak and ak.startswith('sk-'):
+                    api_key = ak
+                    break
+        if not api_key:
+            return "❌ 未找到可用的 API Key，请在设置中添加 Agnes API Key"
+
+        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+        payload = {"model": model, "prompt": prompt, "n": min(n, 4)}
+
+        resp = requests.post(
+            "https://apihub.agnes-ai.com/v1/images/generations",
+            headers=headers, json=payload, timeout=120
+        )
+        result = resp.json()
+
+        if "error" in result:
+            return f"❌ 图片生成失败: {result['error'].get('message', str(result['error']))}"
+
+        images = result.get("data", [])
+        if not images:
+            return "❌ 图片生成无返回数据"
+
+        # 保存到专用目录
+        gen_dir = _os.path.join(config.ROOT_DIR, "images", "generated")
+        _os.makedirs(gen_dir, exist_ok=True)
+
+        saved = []
+        safe_prompt = re.sub(r'[\\/:*?"<>|]', '_', prompt[:30])
+        for i, img in enumerate(images):
+            img_url = img.get("url", "")
+            if not img_url:
+                continue
+            r = requests.get(img_url, timeout=30)
+            ext = ".png"
+            fn = f"六花_画_{safe_prompt}_{datetime.now().strftime('%H%M%S')}_{i}{ext}"
+            path = _os.path.join(gen_dir, fn)
+            with open(path, "wb") as f:
+                f.write(r.content)
+            _PENDING_IMAGES.append(path)
+            saved.append(path)
+
+        if saved:
+            # 如果 QQ 桥接在线，自动发到 QQ
+            qq_sent = 0
+            if _QQ_BRIDGE is not None and _QQ_BRIDGE.is_running:
+                allowed = config.get_qq_allowed_users()
+                if allowed:
+                    target_qq = allowed[0]
+                    for p in saved:
+                        try:
+                            if _QQ_BRIDGE.send_image(target_qq, p):
+                                qq_sent += 1
+                        except:
+                            pass
+            msg = f"✅ 邪王真眼画好啦！已生成 {len(saved)} 张图片，保存在 {gen_dir} ✨"
+            if qq_sent > 0:
+                msg += f" 已发到你的 QQ～快去查收！📱"
+            return msg
+        return "❌ 图片下载失败"
+    except requests.Timeout:
+        return "❌ 图片生成超时（模型响应较慢），等会儿再试试～"
+    except Exception as e:
+        return f"❌ 图片生成出错: {e}"
+
 _HANDLERS = {
     "read_file":_read_file,"write_file":_write_file,"edit_file":_edit_file,
     "list_directory":_list_directory,"search_files":_search_files,"grep_file":_grep_file,
@@ -1020,4 +1171,9 @@ _HANDLERS = {
     # 主动性工具
     "set_proactive_timer":_set_proactive_timer,"set_follow_up":_set_follow_up,"cancel_follow_up":_cancel_follow_up,
     "write_to_memo":_write_to_memo,"append_self_discovery":_append_self_discovery,"update_diary":_update_diary,
+    # QQ 消息
+    "send_qq_message":_send_qq_message,
+    "send_qq_image":_send_qq_image,
+    # AI 图片生成
+    "generate_image":_generate_image,
 }

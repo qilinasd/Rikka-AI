@@ -4,7 +4,7 @@ RikkaAI - 全局配置
 import os, json
 from datetime import datetime
 
-APP_NAME = "RikkaAI"; APP_VERSION = "0.1.0"
+APP_NAME = "RikkaAI"; APP_VERSION = "0.3.0"
 WINDOW_WIDTH = 1000; WINDOW_HEIGHT = 700; WINDOW_MIN_WIDTH = 800; WINDOW_MIN_HEIGHT = 600
 
 MODEL = "deepseek-v4-flash"; API_BASE = "https://api.deepseek.com/v1"

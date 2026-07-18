@@ -166,6 +166,27 @@ class SummaryWorker(QObject):
             self.done.emit("摘要生成失败")
 
 
+class QQAgentWorker(QObject):
+    """QQ 消息处理线程（带流式 + 权限控制）"""
+    stream = pyqtSignal(str)
+    finished = pyqtSignal(str)
+    error = pyqtSignal(str)
+
+    def __init__(self, agent, text, restricted=False):
+        super().__init__()
+        self.agent = agent
+        self._input = text
+        self._restricted = restricted
+
+    def run(self):
+        try:
+            self.agent.set_restricted(self._restricted)
+            r = self.agent.chat(self._input, on_stream=lambda c: self.stream.emit(c))
+            self.finished.emit(r)
+        except Exception as e:
+            self.error.emit(str(e))
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  主窗口
 # ═══════════════════════════════════════════════════════════════════
@@ -184,6 +205,8 @@ class MainWindow(QMainWindow):
 
         # QQ 桥接（信号桥，保证线程安全）
         self._qq_bridge = get_bridge()
+        from brain import tools as _tt
+        _tt.set_qq_bridge(self._qq_bridge)
         self._qq_signals = QQBridgeSignals()
         self._qq_signals.connected.connect(self._on_qq_connected)
         self._qq_signals.disconnected.connect(self._on_qq_disconnected)
@@ -572,23 +595,78 @@ class MainWindow(QMainWindow):
         return None
 
     def _on_qq_message_threadsafe(self, user_id, group_id, message, msg_type):
-        """主线程：处理 QQ 消息（在主线程运行，可以直接调 UI）"""
+        """主线程：后台处理 QQ 消息，不阻塞 UI"""
         try:
             sender = f"QQ:{user_id}"
             if group_id:
                 sender = f"QQ群{group_id}:{user_id}"
             self.chat_widget.add_message(f"💬 [{sender}] {message}", is_user=True)
+            self.chat_widget.start_streaming()
 
-            # 直接在主线程调六花（会阻塞但QQ消息不多，问题不大）
-            response = self.agent.chat(message)
-            if response:
-                self.chat_widget.add_message(f"💬 [六花→QQ] {response}", is_user=False)
-                if msg_type == "group" and group_id:
-                    self._qq_bridge.send_group_msg(group_id, response)
-                else:
-                    self._qq_bridge.send_private_msg(user_id, response)
+            # 获取该 QQ 号独立的 AgentCore
+            qq_agent = self._get_qq_agent(user_id)
+
+            # 检查操作权限
+            restricted = user_id not in config.QQ_ALLOWED_USERS if config.QQ_ALLOWED_USERS else True
+
+            self._qq_thread = QThread(self)
+            self._qq_worker = QQAgentWorker(qq_agent, message, restricted=restricted)
+            self._qq_worker.moveToThread(self._qq_thread)
+            self._qq_worker.stream.connect(lambda c: self.chat_widget.append_stream(c))
+            self._qq_worker.finished.connect(lambda r: self._on_qq_done(r, user_id, group_id, msg_type))
+            self._qq_worker.error.connect(self._on_qq_thread_error)
+            self._qq_thread.started.connect(self._qq_worker.run)
+            self._qq_thread.finished.connect(self._qq_thread.deleteLater)
+            self._qq_thread.start()
         except Exception as e:
             self.chat_widget.add_message(f"💬 QQ消息处理失败: {e}", is_user=False)
+
+    def _get_qq_agent(self, user_id: int):
+        """获取或创建某个 QQ 用户独立的 AgentCore 实例"""
+        if not hasattr(self, '_qq_agents'):
+            self._qq_agents = {}
+        if user_id not in self._qq_agents:
+            agent = AgentCore(memory=self.memory)
+            agent.start_session()
+            self._qq_agents[user_id] = agent
+        return self._qq_agents[user_id]
+
+    def _on_qq_done(self, response, user_id, group_id, msg_type):
+        """QQ 回复完成 → 显示 + 发文字/图片到 QQ"""
+        if self._qq_thread:
+            self._qq_thread.quit()
+            self._qq_thread.wait()
+            self._qq_thread = None
+            self._qq_worker = None
+        self.chat_widget.stop_streaming()
+
+        if response:
+            self.chat_widget.add_message(f"💬 [六花→QQ] {response}", is_user=False)
+            if msg_type == "group" and group_id:
+                self._qq_bridge.send_group_msg(group_id, response)
+            else:
+                self._qq_bridge.send_private_msg(user_id, response)
+
+        # 发送 AI 生成的图片到 QQ（截图、搜图、AI 画图等）
+        from brain import tools as _tt
+        while _tt._PENDING_IMAGES:
+            img_path = _tt._PENDING_IMAGES.pop(0)
+            if os.path.exists(img_path):
+                self.chat_widget.add_message("", is_user=False, image_path=img_path)
+                if msg_type == "group" and group_id:
+                    self._qq_bridge.send_group_image(group_id, img_path)
+                else:
+                    self._qq_bridge.send_image(user_id, img_path)
+
+    def _on_qq_thread_error(self, err):
+        """QQ 线程出错"""
+        if self._qq_thread:
+            self._qq_thread.quit()
+            self._qq_thread.wait()
+            self._qq_thread = None
+            self._qq_worker = None
+        self.chat_widget.stop_streaming()
+        self.chat_widget.add_message(f"💬 QQ回复出错: {err}", is_user=False)
 
     def _on_qq_connected(self):
         self._qq_btn.setStyleSheet(

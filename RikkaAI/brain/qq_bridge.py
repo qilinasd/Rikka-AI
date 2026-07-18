@@ -3,6 +3,7 @@ RikkaAI - QQ 桥接模块
 通过 NapCat (OneBot v11) WebSocket 连接 QQ
 """
 import json
+import os
 import threading
 import time
 import logging
@@ -116,6 +117,60 @@ class NapCatBridge:
             })
             return result is not None
         except:
+            return False
+
+    def send_image(self, user_id: int, image_path: str) -> bool:
+        """发送图片到私聊（OneBot v11 消息段格式）"""
+        try:
+            import os as _os
+            if not _os.path.exists(image_path):
+                logger.error(f"图片文件不存在: {image_path}")
+                return False
+            # 优先用 file:// URI（NapCat 原生支持）
+            file_uri = f"file:///{image_path.replace(_os.sep, '/')}"
+            msg_array = [{"type": "image", "data": {"file": file_uri}}]
+            result = self._api_call("send_private_msg", {
+                "user_id": user_id, "message": msg_array
+            })
+            if result is not None:
+                return True
+            # 回退：base64 编码
+            import base64
+            with open(image_path, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode()
+            msg_array = [{"type": "image", "data": {"file": f"base64://{b64}"}}]
+            result = self._api_call("send_private_msg", {
+                "user_id": user_id, "message": msg_array
+            })
+            return result is not None
+        except Exception as e:
+            logger.error(f"发送图片失败: {e}")
+            return False
+
+    def send_group_image(self, group_id: int, image_path: str) -> bool:
+        """发送图片到群聊（OneBot v11 消息段格式）"""
+        try:
+            import os as _os
+            if not _os.path.exists(image_path):
+                logger.error(f"图片文件不存在: {image_path}")
+                return False
+            file_uri = f"file:///{image_path.replace(_os.sep, '/')}"
+            msg_array = [{"type": "image", "data": {"file": file_uri}}]
+            result = self._api_call("send_group_msg", {
+                "group_id": group_id, "message": msg_array
+            })
+            if result is not None:
+                return True
+            import base64
+            with open(image_path, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode()
+            msg_array = [{"type": "image", "data": {"file": f"base64://{b64}"}}]
+            result = self._api_call("send_group_msg", {
+                "group_id": group_id, "message": msg_array
+            })
+            return result is not None
+        except Exception as e:
+            logger.error(f"发送群图片失败: {e}")
             return False
 
     def get_login_info(self) -> dict:
