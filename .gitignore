@@ -2,7 +2,9 @@
 __pycache__/
 *.pyc
 *.pyo
-*.pyc
+*.py[cod]
+*$py.class
+*.so
 
 # 系统
 .DS_Store
@@ -32,6 +34,16 @@ images/screenshots/
 images/received/
 images/sent/
 images/downloaded/
+images/generated/
+
+# 语音缓存和输出
+voice_cache/
+voice_output/
+tts/
+
+# 临时文件
+tmp/
+output/
 
 # Graphify 输出
 graphify-out/
