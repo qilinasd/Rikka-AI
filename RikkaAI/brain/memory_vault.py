@@ -178,6 +178,9 @@ def _migrate_schema():
                 ("facts", "ALTER TABLE mf_entities ADD COLUMN facts TEXT DEFAULT ''"),
                 ("current_status", "ALTER TABLE mf_entities ADD COLUMN current_status TEXT DEFAULT ''"),
                 ("judgment", "ALTER TABLE mf_entities ADD COLUMN judgment TEXT DEFAULT ''"),
+                # 🆕 Phase 2.4: 实体链接字段
+                ("linked_memory_ids", "ALTER TABLE mf_entities ADD COLUMN linked_memory_ids TEXT DEFAULT '[]'"),
+                ("judgment", "ALTER TABLE mf_entities ADD COLUMN judgment TEXT DEFAULT ''"),
             ):
                 if col not in cols:
                     conn.execute(ddl)
@@ -270,12 +273,84 @@ def store_fragment(entity: str, content: str, category: str = "一般",
         except Exception:
             pass
 
+        # 🆕 Phase 2.4: 实体链接 - 提取实体并链接到记忆
+        try:
+            entities = _extract_entities_simple(content)
+            for ent_name, ent_type in entities:
+                _link_entity_to_memory(conn, ent_name, ent_type, fid)
+        except Exception:
+            pass
+
         # 🆕 Phase 2.1: 检查是否需要触发 Archivist 整合
         _maybe_trigger_consolidation(conn)
 
         return fid
     finally:
         conn.close()
+
+
+def _extract_entities_simple(text: str) -> list:
+    """简化实体提取（基于规则，无需 spaCy）
+
+    Returns:
+        [(entity_name, entity_type), ...]
+    """
+    entities = []
+
+    # 规则 1: 人名关键词
+    if "契约者" in text or "用户" in text:
+        entities.append(("契约者", "person"))
+
+    # 规则 2: 地点（常见城市和场所）
+    places = ["北京", "上海", "广州", "深圳", "杭州", "成都", "武汉",
+              "公司", "家", "学校", "办公室", "咖啡厅", "图书馆"]
+    for place in places:
+        if place in text:
+            entities.append((place, "place"))
+
+    # 规则 3: 时间表达
+    times = ["今天", "明天", "昨天", "下周", "上周", "这周", "本月", "下月",
+             "Q1", "Q2", "Q3", "Q4", "一季度", "二季度", "三季度", "四季度"]
+    for t in times:
+        if t in text:
+            entities.append((t, "time"))
+
+    # 规则 4: 组织/公司
+    orgs = ["字节跳动", "腾讯", "阿里", "百度", "华为", "小米", "OpenAI", "Anthropic"]
+    for org in orgs:
+        if org in text:
+            entities.append((org, "organization"))
+
+    return entities
+
+
+def _link_entity_to_memory(conn, entity_name: str, entity_type: str, memory_id: int):
+    """链接实体到记忆"""
+    try:
+        # 检查实体是否存在
+        row = conn.execute(
+            "SELECT linked_memory_ids FROM mf_entities WHERE name = ?",
+            (entity_name,)
+        ).fetchone()
+
+        if row:
+            # 已存在，追加 memory_id
+            ids = json.loads(row[0] or "[]")
+            if memory_id not in ids:
+                ids.append(memory_id)
+                conn.execute(
+                    "UPDATE mf_entities SET linked_memory_ids = ?, mention_count = mention_count + 1 WHERE name = ?",
+                    (json.dumps(ids), entity_name)
+                )
+        else:
+            # 新建实体
+            conn.execute(
+                "INSERT INTO mf_entities (name, entity_type, linked_memory_ids, mention_count) VALUES (?, ?, ?, 1)",
+                (entity_name, entity_type, json.dumps([memory_id]))
+            )
+        conn.commit()
+    except Exception:
+        pass  # 静默失败，不影响主流程
 
 
 def _maybe_trigger_consolidation(conn):
@@ -905,6 +980,49 @@ def search_entities(query: str) -> list:
             (f"%{query}%",),
         ).fetchall()
         return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_memories_by_entity(entity_name: str, top_k: int = 10) -> list:
+    """🆕 Phase 2.4: 通过实体获取所有相关记忆（实现多跳推理）
+
+    Args:
+        entity_name: 实体名称
+        top_k: 返回最多多少条记忆
+
+    Returns:
+        记忆碎片列表
+    """
+    conn = _get_db()
+    try:
+        # 查询实体的 linked_memory_ids
+        row = conn.execute(
+            "SELECT linked_memory_ids FROM mf_entities WHERE name = ?",
+            (entity_name,)
+        ).fetchone()
+
+        if not row:
+            return []
+
+        memory_ids = json.loads(row[0] or "[]")
+        if not memory_ids:
+            return []
+
+        # 获取这些记忆的详细信息
+        placeholders = ",".join("?" * len(memory_ids))
+        rows = conn.execute(
+            f"""SELECT id, entity, content, category, emotional_weight, created_at
+                FROM mf_fragments
+                WHERE id IN ({placeholders}) AND status != 'tombstone'
+                ORDER BY created_at DESC
+                LIMIT ?""",
+            (*memory_ids, top_k)
+        ).fetchall()
+
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
     finally:
         conn.close()
 

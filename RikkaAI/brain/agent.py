@@ -216,6 +216,21 @@ class AgentCore:
         if hooked.strip():
             parts.append(hooked)
 
+        # 🆕 Phase 3: Procedural Memory 检索（任务步骤参考）
+        try:
+            from brain.procedural_memory import ProceduralMemory
+            pm = ProceduralMemory()
+            procedures = pm.search_procedures(text, top_k=2)
+            if procedures:
+                proc_text = ["【💡 任务步骤参考】"]
+                for p in procedures:
+                    steps_str = " → ".join(s["action"] for s in p["steps"])
+                    confidence_emoji = "🟢" if p["confidence"] >= 0.7 else "🟡" if p["confidence"] >= 0.5 else "🔴"
+                    proc_text.append(f"  {confidence_emoji} {p['task_type']}（置信度 {p['confidence']:.0%}）：{steps_str}")
+                parts.append("\n".join(proc_text))
+        except Exception:
+            pass
+
         # 2. 动态记忆检索（需要当前输入 text，不适合做成静态 hook）
         settings = cfg.get_chat_settings()
         if settings["chat_memory_enabled"]:
