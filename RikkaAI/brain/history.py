@@ -3,7 +3,7 @@ RikkaAI - 对话历史系统（SQLite 持久化）
 """
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import config
 
@@ -82,6 +82,16 @@ def delete_session(session_id: int):
     conn.close()
 
 
+def clear_all_sessions():
+    """Remove all persisted chat sessions and messages."""
+    conn = _get_db()
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("DELETE FROM messages")
+    conn.execute("DELETE FROM sessions")
+    conn.commit()
+    conn.close()
+
+
 def add_message(session_id: int, role: str, content: str):
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     conn = _get_db()
@@ -118,3 +128,53 @@ def get_messages(session_id: int) -> list:
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def get_chat_analytics(days: int = 7) -> dict:
+    """Return read-only conversation metrics for the chat insights panel."""
+    days = max(2, min(int(days), 30))
+    today = datetime.now().date()
+    start = today - timedelta(days=days - 1)
+    start_text = start.strftime("%Y-%m-%d")
+    today_text = today.strftime("%Y-%m-%d")
+
+    conn = _get_db()
+    total_sessions = conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+    total_messages = conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
+    today_sessions = conn.execute(
+        "SELECT COUNT(*) FROM sessions WHERE substr(created_at, 1, 10) = ?",
+        (today_text,),
+    ).fetchone()[0]
+    today_messages = conn.execute(
+        "SELECT COUNT(*) FROM messages WHERE substr(created_at, 1, 10) = ?",
+        (today_text,),
+    ).fetchone()[0]
+    rows = conn.execute(
+        """
+        SELECT substr(created_at, 1, 10) AS day, COUNT(*) AS count
+        FROM messages
+        WHERE substr(created_at, 1, 10) >= ?
+        GROUP BY day
+        ORDER BY day
+        """,
+        (start_text,),
+    ).fetchall()
+    conn.close()
+
+    counts = {row["day"]: int(row["count"]) for row in rows}
+    labels = []
+    values = []
+    for offset in range(days):
+        day = start + timedelta(days=offset)
+        key = day.strftime("%Y-%m-%d")
+        labels.append(f"{day.month}/{day.day}")
+        values.append(counts.get(key, 0))
+
+    return {
+        "today_sessions": int(today_sessions),
+        "today_messages": int(today_messages),
+        "total_sessions": int(total_sessions),
+        "total_messages": int(total_messages),
+        "labels": labels,
+        "values": values,
+    }

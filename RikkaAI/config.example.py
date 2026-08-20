@@ -11,7 +11,15 @@ MODEL = "deepseek-v4-flash"; API_BASE = "https://api.deepseek.com/v1"
 API_KEY = "your-api-key-here"; TEMPERATURE = 0.8
 
 PROACTIVE_ENABLED = True; PROACTIVE_INTERVAL = 15; PROACTIVE_PERSIST = 3; PROACTIVE_COOLDOWN = 60
-PROACTIVE_SLACK_ENABLED = True; PROACTIVE_SLACK_PROB = 30
+PROACTIVE_SLACK_ENABLED = True; PROACTIVE_SLACK_PROB = 30; PROACTIVE_SLACK_COOLDOWN = 60  # 观察冷却（分钟），独立于主动聊天
+PROACTIVE_QQ_ENABLED = True  # 主动关心时同步发 QQ（多通道交付）
+MEMORY_CUE_ENABLED = True  # 记忆唤起：主动翻旧账关心契约者（完整版，对齐莲心）
+MEMORY_CUE_MAX_CANDIDATES = 8  # 每轮评估的候选上限
+WEEKLY_AUTO_ENABLED = True  # 自动周记：每周日固定时间自动生成本周周记
+WEEKLY_AUTO_HOUR = 21  # 触发小时（0-23）
+WEEKLY_AUTO_RETRIES = 3  # 失败后每小时重试次数（含首次共 3 次机会）
+DIARY_AUTO_FLOW_ENABLED = True  # 实时流水日记：每轮对话结束自动追加到当天日记
+DIARY_AUTO_FLOW_MAX = 120  # 每条流水记录单方内容最大长度（字符）
 ROTATION_THRESHOLD = 20
 COMPRESSION_ENABLED = True; COMPRESSION_THRESHOLD = 30; COMPRESSION_KEEP = 20
 AUTO_START = False

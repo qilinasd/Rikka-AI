@@ -1,23 +1,84 @@
 """
 RikkaAI - Function Calling 工具集
 """
-import os, glob, subprocess, platform, re, base64
+import os, glob, subprocess, platform, re, base64, sys
 from datetime import datetime
 import config
 
 def _norm_cat(c): return re.sub(r'([\U0001F000-\U0001FFFF☀-➿⭐❤]) ', r'\1', c)
 ZHIPU_KEY = "2df6241945714db08632ac658d8e893d.JtpBi8ABWxcwLu4O"
 
+def _image_mime(path):
+    """按文件头判断真实图片格式（后缀经常和真实格式不一致，GLM 靠 data URI 的 mime 判断）"""
+    with open(path, "rb") as f:
+        head = f.read(16)
+    if head[:3] == b"\xff\xd8\xff": return "jpeg"
+    if head[:4] == b"\x89PNG": return "png"
+    if head[:4] in (b"GIF8",): return "gif"
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP": return "webp"
+    if head[:2] == b"BM": return "bmp"
+    ext = os.path.splitext(path)[1].lower().lstrip(".")
+    return ext if ext in ("png", "jpeg", "jpg", "gif", "webp", "bmp") else "png"
+
+def _encode_image(path, max_side=2048, max_bytes=5_000_000):
+    """读出图片字节，返回 (base64, mime)。过大时先用 PIL 压缩，避免 GLM 拒绝/超时。"""
+    if os.path.getsize(path) <= max_bytes:
+        with open(path, "rb") as f:
+            return base64.b64encode(f.read()).decode(), _image_mime(path)
+    try:
+        from PIL import Image
+        import io
+        img = Image.open(path).convert("RGB")
+        w, h = img.size
+        if max(w, h) > max_side:
+            r = max_side / max(w, h)
+            img = img.resize((int(w * r), int(h * r)), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, "JPEG", quality=88)
+        data = buf.getvalue()
+        if len(data) > max_bytes:
+            buf = io.BytesIO(); img.save(buf, "JPEG", quality=60)
+            data = buf.getvalue()
+        return base64.b64encode(data).decode(), "jpeg"
+    except Exception:
+        with open(path, "rb") as f:
+            return base64.b64encode(f.read()).decode(), _image_mime(path)
+
+def _vision_fallback(prompt, path):
+    """GLM-4V 失败时的兜底：vision.js（千问 VL，key 内置脚本）"""
+    import subprocess, shutil
+    node = shutil.which("node")
+    vision_js = r"f:\RikkaAI\claude-vision-skill\vision.js"
+    if not node or not os.path.exists(vision_js):
+        raise RuntimeError("vision.js 不可用")
+    r = subprocess.run([node, vision_js, path, prompt], capture_output=True,
+                       text=True, encoding="utf-8", errors="replace", timeout=90)
+    out = (r.stdout or "").strip()
+    if not out:
+        raise RuntimeError((r.stderr or "无输出")[:200])
+    return out
+
 def _vision(prompt, path, temp=0.3, maxt=1024):
     if not os.path.exists(path): return "文件不存在"
-    with open(path,"rb") as f: b64=base64.b64encode(f.read()).decode()
+    b64, mime = _encode_image(path)
     import requests
-    r=requests.post("https://open.bigmodel.cn/api/paas/v4/chat/completions",
-        headers={"Authorization":f"Bearer {ZHIPU_KEY}","Content-Type":"application/json"},
-        json={"model":"glm-4v-flash","messages":[{"role":"user","content":[
-            {"type":"text","text":prompt},{"type":"image_url","image_url":{"url":f"data:image/png;base64,{b64}"}}
-        ]}],"temperature":temp,"max_tokens":maxt},timeout=30)
-    return r.json()["choices"][0]["message"]["content"]
+    err = ""
+    try:
+        r = requests.post("https://open.bigmodel.cn/api/paas/v4/chat/completions",
+            headers={"Authorization":f"Bearer {ZHIPU_KEY}","Content-Type":"application/json"},
+            json={"model":"glm-4v-flash","messages":[{"role":"user","content":[
+                {"type":"text","text":prompt},{"type":"image_url","image_url":{"url":f"data:image/{mime};base64,{b64}"}}
+            ]}],"temperature":temp,"max_tokens":maxt},timeout=60)
+        if r.status_code == 200:
+            return r.json()["choices"][0]["message"]["content"]
+        err = f"GLM HTTP {r.status_code}: {r.text[:150]}"
+    except Exception as e:
+        err = f"GLM 异常: {str(e)[:150]}"
+    # 兜底：千问 VL（vision.js）
+    try:
+        return _vision_fallback(prompt, path)
+    except Exception as e2:
+        return f"识图失败（GLM: {err}；千问兜底也失败: {e2}）"
 
 TOOL_DEFINITIONS = [
     {"type":"function","function":{"name":"read_file","description":"读取指定文件的内容","parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}}},
@@ -36,35 +97,38 @@ TOOL_DEFINITIONS = [
     {"type":"function","function":{"name":"describe_image","description":"分析图片内容","parameters":{"type":"object","properties":{"path":{"type":"string"},"prompt":{"type":"string"}},"required":["path"]}}},
     {"type":"function","function":{"name":"ocr_image","description":"识别图片中的文字","parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}}},
     {"type":"function","function":{"name":"open_app","description":"打开应用程序或文件","parameters":{"type":"object","properties":{"target":{"type":"string"}},"required":["target"]}}},
-    {"type":"function","function":{"name":"read_notes","description":"读取备忘本内容","parameters":{"type":"object","properties":{"query":{"type":"string"}},"required":[]}}},
-    {"type":"function","function":{"name":"add_note","description":"添加一条备忘","parameters":{"type":"object","properties":{"title":{"type":"string"},"content":{"type":"string"},"category":{"type":"string"}},"required":["title","content"]}}},
     {"type":"function","function":{"name":"save_memory","description":"记住信息到记忆","parameters":{"type":"object","properties":{"content":{"type":"string"},"category":{"type":"string"}},"required":["content"]}}},
     {"type":"function","function":{"name":"read_memories","description":"读取记忆内容","parameters":{"type":"object","properties":{"category":{"type":"string"}},"required":[]}}},
-    {"type":"function","function":{"name":"web_search","description":"搜索互联网信息","parameters":{"type":"object","properties":{"query":{"type":"string"},"max_results":{"type":"number"}},"required":["query"]}}},
-    {"type":"function","function":{"name":"bilibili_search","description":"在B站搜索视频","parameters":{"type":"object","properties":{"keyword":{"type":"string"},"page":{"type":"number"}},"required":["keyword"]}}},
+    {"type":"function","function":{"name":"manage_user_state","description":"【用户状态管理】记录契约者的即时状态（生理期/搬家/压力/备考/生病/近期忙什么等有时效的信息）。有三种操作：set=新增状态（必须给过期时间，默认90天）；update=修改已有状态（给 state_id 和修改内容）；resolve=结束一条状态（给 state_id 和原因）。这些状态会自动过期，让六花永远知道契约者『现在』的处境，而不是历史旧账。","parameters":{"type":"object","properties":{"action":{"type":"string","enum":["set","update","resolve"],"description":"set=新增；update=修改；resolve=结束"},"content":{"type":"string","description":"状态内容，如：契约者最近在赶项目/契约者感冒了。set 时必填"},"state_id":{"type":"number","description":"状态ID。update/resolve 时必填"},"expires_at":{"type":"string","description":"可选，过期时间 'YYYY-MM-DD HH:MM'，不填默认90天后；传 'none' 永不过期"}},"required":["action"]}}},
+    {"type":"function","function":{"name":"correct_memory","description":"【记忆纠错】契约者指出六花记错了时调用！比如契约者说『你记错了，我不喜欢喝咖啡』。按关键词找到那条错误记忆，修正内容或删除。如果契约者给了正确说法就传 correct_content 更新；没有就只传关键词删除旧记忆。","parameters":{"type":"object","properties":{"query":{"type":"string","description":"描述记错的内容关键词，如：喜欢喝咖啡"},"correct_content":{"type":"string","description":"可选，正确的说法。不传则删除旧记忆"}},"required":["query"]}}},
+    {"type":"function","function":{"name":"web_search","description":"【日常网页搜索】检索全网网页，快速查概念、常识、综合资料、网站内容。★路由规则★：搜索对象是以下平台/类型时，必须改用对应专门工具，绝不要用本工具——B站视频→bilibili_search；YouTube视频/总结→youtube_transcript；GitHub仓库/文件→github_repo；维基百科/百科词条→search_wiki；新闻/时事/资讯→search_news；RSS/博客/播客订阅→read_rss；Twitter/X→read_twitter；图片/壁纸→search_images/search_images_smart；天气→get_weather；给链接读正文→read_url。★专业深度搜索（股价行情/学术论文/深度调研/多语言/事实核验）→ argo_search★。只有当这些都是普通网页、概念、综合资料、网站内容时才用本工具。","parameters":{"type":"object","properties":{"query":{"type":"string"},"max_results":{"type":"number"}},"required":["query"]}}},
+    {"type":"function","function":{"name":"bilibili_search","description":"【B站专用搜索】契约者提到「B站/Bilibili/哔哩哔哩/视频」上搜索或找视频时，必须用本工具，不要用 web_search 或 argo_search。返回匹配的视频标题、UP主、播放量和链接。","parameters":{"type":"object","properties":{"keyword":{"type":"string"},"page":{"type":"number"}},"required":["keyword"]}}},
     # ── 图片下载 ────────────────────────────────────────────────
     {"type":"function","function":{"name":"download_image","description":"从网络URL下载图片并保存到本地，支持各种图片格式（jpg/png/gif/webp等）。图片会自动显示给契约者看，下载后你不用再调 send_image。注意：如果下载失败（比如网站要登录/验证码），换个网站或者换个关键词让契约者重新搜。","parameters":{"type":"object","properties":{"url":{"type":"string","description":"图片的完整URL地址（必须以 .jpg/.png/.gif/.webp 结尾，或确保是可直接访问的图片链接）"},"filename":{"type":"string","description":"可选，自定义文件名（不含扩展名）。不传则自动按时间命名"}},"required":["url"]}}},
-    {"type":"function","function":{"name":"search_images","description":"搜索互联网图片，返回可直接下载的图片链接列表。搜到后选一张喜欢的，用 download_image 下载下来就能自动发给契约者看。注意：不要去打开这些网页（用 read_url），直接从返回的URL中选一个图片链接下载就行。如果网站要登录或验证码就换一张。","parameters":{"type":"object","properties":{"query":{"type":"string","description":"搜索关键词，越具体越好。中文英文都行，例如：可爱猫猫 壁纸 4k / cute cat wallpaper"},"max_results":{"type":"number","description":"返回多少张图片（默认5，最多10）"}},"required":["query"]}}},
-    {"type":"function","function":{"name":"search_images_smart","description":"【智能搜图】搜索图片并用AI理解图片内容，不只是看文件名/标题。适合搜那种关键词说不清楚、但一看图就知道的题材。比如：「睡觉的照片」（即使图片文件名没写sleeping也能识别出来）、「在吃东西的猫」、「看起来很悲伤的画」。","parameters":{"type":"object","properties":{"what":{"type":"string","description":"你能想到的描述。用自然语言说清楚你想看什么样的图片"},"keywords":{"type":"string","description":"可选，额外关键词辅助搜索。不填的话六花会自己想合适的关键词去搜"},"max_results":{"type":"number","description":"返回多少张图片（默认取设置里的值，可在设置面板调节。每张图都会用AI看内容，越多越慢）"}},"required":["what"]}}},
-    # ── 窗口识别 + 游戏控制 ────────────────────────────────────
-    {"type":"function","function":{"name":"list_windows","description":"列出所有打开的窗口，看看目前有哪些程序在运行。适合用来找游戏窗口的标题。","parameters":{"type":"object","properties":{},"required":[]}}},
-    {"type":"function","function":{"name":"capture_window","description":"【只截游戏的窗口】按窗口标题截图，只截游戏区域不截桌面。先调用 list_windows 找到窗口的准确标题，再传进来截图。截图会自动发给契约者看。截完图后窗口尺寸报给 click_mouse，方便精准点击。","parameters":{"type":"object","properties":{"window_title":{"type":"string","description":"窗口标题（支持模糊匹配，输入部分标题就能找到）"}},"required":["window_title"]}}},
-    {"type":"function","function":{"name":"press_key","description":"按下一个键盘按键。用于控制游戏、翻页、确认等。","parameters":{"type":"object","properties":{"key":{"type":"string","description":"按键名，例如：enter, space, up, down, left, right, a, b, 1, 2, escape, tab, f5"},"times":{"type":"number","description":"按几次（默认1次）"},"interval":{"type":"number","description":"每次间隔秒数（默认0.2）"}},"required":["key"]}}},
-    {"type":"function","function":{"name":"click_mouse","description":"在屏幕指定位置点击鼠标。先 screenshot 截图看到画面后，判断坐标再点击。","parameters":{"type":"object","properties":{"x":{"type":"number","description":"屏幕X坐标"},"y":{"type":"number","description":"屏幕Y坐标"},"button":{"type":"string","description":"按键：left/right/middle（默认left）"},"clicks":{"type":"number","description":"点击次数（默认1）"}},"required":["x","y"]}}},
-    {"type":"function","function":{"name":"move_mouse","description":"移动鼠标到屏幕指定位置。","parameters":{"type":"object","properties":{"x":{"type":"number","description":"屏幕X坐标"},"y":{"type":"number","description":"屏幕Y坐标"}},"required":["x","y"]}}},
-    {"type":"function","function":{"name":"type_text","description":"模拟键盘打字输入文字。","parameters":{"type":"object","properties":{"text":{"type":"string","description":"要输入的文字"}},"required":["text"]}}},
-    {"type":"function","function":{"name":"game_play","description":"【六花亲自玩游戏】六花会自己看屏幕、分析画面、操作键盘鼠标来玩游戏。每回合：截图→理解画面→决定操作→执行→继续。适合回合制RPG、解谜、剧情类游戏。告诉六花游戏名和怎么玩就行！","parameters":{"type":"object","properties":{"game_name":{"type":"string","description":"游戏名称"},"instructions":{"type":"string","description":"告诉六花怎么玩：游戏规则、操作方法（键盘快捷键）、目标是什么"},"character_name":{"type":"string","description":"可选，游戏角色名，让六花更有代入感"},"max_turns":{"type":"number","description":"最多玩多少回合（默认30，越大玩得越久）"}},"required":["game_name","instructions"]}}},
+    {"type":"function","function":{"name":"search_images","description":"【搜图专用】搜索互联网图片，返回可直接下载的图片链接列表。契约者要「图片/壁纸/表情包/某物的照片」时用本工具，不要用 web_search。搜到后选一张喜欢的，用 download_image 下载下来就能自动发给契约者看。注意：不要去打开这些网页（用 read_url），直接从返回的URL中选一个图片链接下载就行。如果网站要登录或验证码就换一张。","parameters":{"type":"object","properties":{"query":{"type":"string","description":"搜索关键词，越具体越好。中文英文都行，例如：可爱猫猫 壁纸 4k / cute cat wallpaper"},"max_results":{"type":"number","description":"返回多少张图片（默认5，最多10）"}},"required":["query"]}}},
+    {"type":"function","function":{"name":"search_images_smart","description":"【智能搜图·专用】搜索图片并用AI理解图片内容，不只是看文件名/标题。适合搜那种关键词说不清楚、但一看图就知道的题材，也是「找图片」的首选。比如：「睡觉的照片」（即使图片文件名没写sleeping也能识别出来）、「在吃东西的猫」、「看起来很悲伤的画」。契约者要图时用本工具，不要用 web_search。","parameters":{"type":"object","properties":{"what":{"type":"string","description":"你能想到的描述。用自然语言说清楚你想看什么样的图片"},"keywords":{"type":"string","description":"可选，额外关键词辅助搜索。不填的话六花会自己想合适的关键词去搜"},"max_results":{"type":"number","description":"返回多少张图片（默认取设置里的值，可在设置面板调节。每张图都会用AI看内容，越多越慢）"}},"required":["what"]}}},
     # ── 联网扩展能力 ────────────────────────────────────────────
     {"type":"function","function":{"name":"read_url","description":"读取指定URL的网页正文内容。适用于查看新闻、文章、文档等。","parameters":{"type":"object","properties":{"url":{"type":"string","description":"要读取的网页完整URL"}},"required":["url"]}}},
-    {"type":"function","function":{"name":"get_weather","description":"查询某个地点的当前天气和温度。不传地点则根据IP自动定位到当前城市。","parameters":{"type":"object","properties":{"location":{"type":"string","description":"城市名，如：北京、东京、London（可选，不传则自动定位）"}},"required":[]}}},
-    {"type":"function","function":{"name":"search_news","description":"搜索最新新闻资讯，返回标题和摘要。适合了解时事、行业动态、热点话题。","parameters":{"type":"object","properties":{"query":{"type":"string","description":"新闻搜索关键词"},"max_results":{"type":"number"}},"required":["query"]}}},
-    {"type":"function","function":{"name":"search_wiki","description":"查询维基百科（Wikipedia）的内容摘要。适合获取知识性、百科类信息。","parameters":{"type":"object","properties":{"query":{"type":"string","description":"要查询的关键词"}},"required":["query"]}}},
+    {"type":"function","function":{"name":"get_weather","description":"【天气专用】查询某个地点的当前天气、温度、湿度、风速。★只要契约者问天气/气温/冷不冷/下不下雨，就用本工具，不要用 web_search 或 argo_search★。不传地点则根据IP自动定位到当前城市。","parameters":{"type":"object","properties":{"location":{"type":"string","description":"城市名，如：北京、东京、London（可选，不传则自动定位）"}},"required":[]}}},
+    {"type":"function","function":{"name":"search_news","description":"【新闻专用】搜索最新新闻资讯，返回标题和摘要。契约者要「最新新闻/时事/资讯/热点/行业动态」时用本工具，不要用 web_search 或 argo_search。","parameters":{"type":"object","properties":{"query":{"type":"string","description":"新闻搜索关键词"},"max_results":{"type":"number"}},"required":["query"]}}},
+    {"type":"function","function":{"name":"search_wiki","description":"【维基百科专用】查询维基百科（Wikipedia）的内容摘要。契约者提到 Wikipedia/维基百科，或想要百科词条式/知识性答案时用本工具，不要用 web_search 或 argo_search。","parameters":{"type":"object","properties":{"query":{"type":"string","description":"要查询的关键词"}},"required":["query"]}}},
+    {"type":"function","function":{"name":"read_rss","description":"【RSS专用】订阅并阅读一个 RSS/Atom 源的最近条目，返回标题和摘要。契约者要订阅/追更某个博客、新闻、播客的更新时用本工具，不要用 web_search。","parameters":{"type":"object","properties":{"feed_url":{"type":"string","description":"RSS/Atom 源的 URL"}},"required":["feed_url"]}}},
+    {"type":"function","function":{"name":"youtube_transcript","description":"【YouTube专用】获取 YouTube 视频的字幕/简介/时长等信息，用来总结视频讲了什么。契约者提到 YouTube/油管 视频，或给了一个 YouTube 链接要总结时用本工具，不要用 web_search。","parameters":{"type":"object","properties":{"url":{"type":"string","description":"YouTube 视频的完整 URL"}},"required":["url"]}}},
+    {"type":"function","function":{"name":"github_repo","description":"【GitHub专用】查看 GitHub 仓库的信息（简介、star、最近提交等）、README 或仓库里某个文件的内容。契约者提到 GitHub/某个开源项目/仓库时用本工具，不要用 web_search 或 argo_search。","parameters":{"type":"object","properties":{"repo":{"type":"string","description":"仓库名，owner/repo 格式，如 browser-use/browser-use"},"path":{"type":"string","description":"可选，仓库内文件路径，如 README.md 或 src/main.py；不填则返回仓库概览+README"}},"required":["repo"]}}},
+    {"type":"function","function":{"name":"argo_search","description":"【专业深度搜索】Argo 搜索引擎：垂直源优先+证据评分，比 web_search 准。★只在这类情况用它★：股价/基金/油价/金价等实时行情；学术论文；深度调研/综述；日韩英等多语言内容；需要可信度评估的事实核验。★绝不要用它★（有更快的专门工具）：天气→get_weather；B站→bilibili_search；维基→search_wiki；新闻→search_news；GitHub→github_repo；YouTube→youtube_transcript；RSS→read_rss；Twitter→read_twitter；图片→search_images/search_images_smart；给链接读内容→read_url；日常查概念/综合网页→web_search。拿不准用哪个时，先想清楚场景再选，别把普通搜索丢给 Argo。","parameters":{"type":"object","properties":{"query":{"type":"string","description":"搜索关键词或完整问题，越具体越好"},"max_results":{"type":"number","description":"返回条数，默认5，最多10"},"mode":{"type":"string","enum":["auto","fast","deep","budget"],"description":"搜索深度：auto=默认；fast=快而省；deep=深度调研（拆子问题多源并行）；budget=省额度。调研/综述类用 deep"}},"required":["query"]}}},
+    {"type":"function","function":{"name":"browser_task","description":"【六花亲自上网操作】驾驶真实浏览器完成网页任务：点按钮、填表单、登录、抓取需要 JS 渲染的页面、多步网页流程。适合：登录某个网站查东西、填一个表单、跑一个需要点击/翻页的流程、抓动态网页内容。任务描述越具体越好（要访问哪个网站、做什么、最后要得到什么）。注意：会真的打开一个无头浏览器执行，需要联网，可能较慢；网站要验证码/强登录时可能失败。","parameters":{"type":"object","properties":{"task":{"type":"string","description":"要完成的网页任务，描述得越具体越好"},"max_steps":{"type":"number","description":"最多执行多少步（默认12，越大越能完成复杂任务但越慢）"}},"required":["task"]}}},
+    {"type":"function","function":{"name":"read_twitter","description":"【Twitter/X 专用】读取 Twitter/X 的内容（需要契约者在 Chrome 里登录了 X，且 OpenCLI 扩展已连接）。契约者提到 Twitter/X/推特、要看某人的推文或热搜时用本工具，不要用 web_search。可以看首页时间线、某个用户的资料或最近推文、搜推文、读单条推文或长文、看热门趋势。只读操作，不能发帖/点赞/关注。如果契约者没登录 X 就提示他先登录。","parameters":{"type":"object","properties":{"action":{"type":"string","enum":["timeline","profile","tweets","search","tweet","article","trending"],"description":"timeline=首页时间线；profile=用户资料（target填用户名）；tweets=用户最近推文（target填用户名）；search=搜推文（target填关键词）；tweet=读单条推文（target填推文URL或ID）；article=读长文（target填推文URL或ID）；trending=热门趋势（不需要target）"},"target":{"type":"string","description":"action 需要的参数：profile/tweets 填用户名（如 elonmusk），search 填关键词，tweet/article 填推文URL或ID，timeline/trending 留空"},"limit":{"type":"number","description":"返回条数，默认10，最多20"}},"required":["action"]}}},
     # ═══════════════════════════════════════════════════════════════
     # ── QQ 消息发送 ─────────────────────────────────────────
     {"type":"function","function":{"name":"send_qq_message","description":"给契约者的 QQ 发送一条消息。当你想主动告诉契约者什么、或者契约者在 QQ 上找你但你想直接在这里回复时使用。发之前想一想：「这话值不值得发到 QQ 上？」","parameters":{"type":"object","properties":{"message":{"type":"string","description":"要发送的 QQ 消息内容"},"user_id":{"type":"number","description":"可选的 QQ 号，不填则发给契约者自己"}},"required":["message"]}}},
     {"type":"function","function":{"name":"send_qq_image","description":"给契约者的 QQ 发送一张图片。先截图或下载图片拿到图片路径，再发给契约者。比如：「把我桌面截图发到QQ上」「把这张猫猫图片发给契约者」","parameters":{"type":"object","properties":{"image_path":{"type":"string","description":"图片文件的完整路径"},"caption":{"type":"string","description":"可选，配图文字说明"},"user_id":{"type":"number","description":"可选的 QQ 号，不填则发给契约者"}},"required":["image_path"]}}},
+    {"type":"function","function":{"name":"query_qq_contacts","description":"查询六花的 QQ 联系人列表：好友或群。当契约者问「你QQ上有谁」「把XX的联系方式找出来」「你在哪些群里」，或你想找到某个 QQ 号发消息时调用。","parameters":{"type":"object","properties":{"scope":{"type":"string","enum":["friends","groups","all"],"description":"friends=好友列表, groups=群列表, all=两者都要"},"keyword":{"type":"string","description":"可选，按昵称/备注/群名模糊筛选"}},"required":["scope"]}}},
     # ── 图片生成 ────────────────────────────────────────────
+    # ── 记忆总结 ────────────────────────────────────────────
+    {"type":"function","function":{"name":"build_summary","description":"生成记忆总结报告！写日报/周记/月报/年鉴。当契约者说「写日报」「写周记」「总结一下这周」「写月报」「写年鉴」时调用。会读取日记和记忆自动生成，保存到 summaries/ 目录下的对应文件夹。","parameters":{"type":"object","properties":{"level":{"type":"string","description":"总结级别：weekly=周记, monthly=月报, yearly=年鉴"},"period_key":{"type":"string","description":"可选，时间段标识，如 2026-W29（周）、2026-07（月）、2026（年），不填自动当前时段"}},"required":["level"]}}},
     {"type":"function","function":{"name":"generate_image","description":"AI 画图！生成图片保存到 images/generated/ 目录，自动显示在聊天窗口+自动发QQ。契约者说画几张就设 n=几（严格按要求的数量，默认1，最多4）","parameters":{"type":"object","properties":{"prompt":{"type":"string","description":"图片描述，越详细越好！比如：一只坐在月亮上的黑猫，星空背景，动漫风格"},"model":{"type":"string","description":"可选，模型名称，默认 agnes-image-2.1-flash"},"n":{"type":"number","description":"契约者要求的图片数量（严格按此值，默认1，最多4）"}},"required":["prompt"]}}},
+    # ── 语音 ────────────────────────────────────────────────
+    {"type":"function","function":{"name":"speak","description":"用六花的语音开口说话！当你觉得这句话值得用声音说出口（卖萌、回应契约者、重要的话）或者契约者让你「用语音说」「说句话」「出个声」时调用。要点：文字必须简短口语化（几句话内），不要包含表情符号、不要有 markdown 和换行；不要每条回复都调用，只在值得开口的时候说。可以用 emotion 表达这句话的情绪，会直接改变六花的声音语气。","parameters":{"type":"object","properties":{"text":{"type":"string","description":"要用语音说的话，简短口语化，几秒钟能念完。日语模式下写日语口语。"},"to":{"type":"string","enum":["local","qq","both"],"description":"说给谁听：local=只在电脑上播放；qq=发给QQ上的契约者；both=两边都要。默认local。若契约者正在QQ上聊天或要求发到QQ，用qq或both。"},"emotion":{"type":"string","enum":["neutral","happy","sad"],"description":"说话情绪：happy=高兴活泼,sad=消沉低落,neutral=默认。会直接改变六花的声音语气，按这句话的情绪选。"},"translation":{"type":"string","description":"中文翻译。六花用日语说话时必填（语音条上给契约者看的中文对照）；中文模式不需要。"}},"required":["text"]}}},
 
     #  主动性工具（链式主动 + 临时回访 + 备忘录 + 人设成长）
     # ═══════════════════════════════════════════════════════════════
@@ -74,11 +138,44 @@ TOOL_DEFINITIONS = [
     {"type":"function","function":{"name":"write_to_memo","description":"写入一条备忘录（追加到 persona/memo.md）。觉得某件事值得记住就直接写，不用问。比如：契约者的喜好、习惯、重要约定、特别时刻。","parameters":{"type":"object","properties":{"content":{"type":"string","description":"要记住的内容"}},"required":["content"]}}},
     {"type":"function","function":{"name":"append_self_discovery","description":"记录一个关于你自己的新发现。当你意识到关于自己的新认知（性格、喜好、能力、成长），调用本工具追加到人设文件。不要改已有内容，只追加。","parameters":{"type":"object","properties":{"discovery":{"type":"string","description":"新的自我发现"}},"required":["discovery"]}}},
     {"type":"function","function":{"name":"update_diary","description":"记录今天的重要对话到日记。有意义的对话结束后调用。","parameters":{"type":"object","properties":{"summary":{"type":"string","description":"今天发生了什么"},"mood":{"type":"string","description":"你现在的感受/心情（开心/温暖/难过/担心等）"}},"required":["summary","mood"]}}},
+    {"type":"function","function":{"name":"write_diary","description":"【写日记】写今天的日记。当你觉得今天值得记下来、或想记录和契约者的一天时主动调用（比如深夜、重要的事情发生之后、心情很想记录的时刻）。会通读今天的所有流水，以第一人称写一篇随笔风格的小作文存入今天的日记。","parameters":{"type":"object","properties":{"mood":{"type":"string","description":"写这篇日记时你的心情（如：温暖、开心、心疼、思考、中二）"}},"required":[]}}},
 ]
+
+# ═══════════════════════════════════════════════════════════════
+#  ask 询问档（allow/ask/deny 三档权限）
+#  敏感工具调用前弹窗询问用户，用户可：允许一次 / 拒绝
+# ═══════════════════════════════════════════════════════════════
+
+# 需要询问的敏感工具（写文件、编辑、打开程序、浏览器操作、下载）
+ASK_TOOLS = {
+    "write_file", "edit_file", "open_app", "browser_task", "download_image",
+}
+
+# 询问回调：由 GUI 层注册（main_window），签名 ask_fn(name, args) -> bool
+_ASK_HANDLER = None
+
+
+def register_ask_handler(fn):
+    """注册询问回调（GUI 层弹窗）。fn(name, args) -> True=允许 / False=拒绝"""
+    global _ASK_HANDLER
+    _ASK_HANDLER = fn
+
+
+def _needs_ask(name: str) -> bool:
+    return name in ASK_TOOLS and _ASK_HANDLER is not None
+
 
 def handle_tool_call(name, args, memory=None):
     h=_HANDLERS.get(name)
     if not h: return f"未知工具: {name}"
+    # ask 询问档：敏感工具先问用户
+    if _needs_ask(name):
+        try:
+            allowed = _ASK_HANDLER(name, args)
+        except Exception:
+            allowed = True
+        if not allowed:
+            return f"⛔ 用户拒绝了 {name} 操作（权限 ask 档）"
     try: return h(args, memory=memory)
     except Exception as e: return f"执行出错: {e}"
 
@@ -117,9 +214,11 @@ def _search_files(args,**kwargs):
 
 def _grep_file(args,**kwargs):
     try:
-        c=["findstr" if os.name=="nt" else "rg"]
-        if os.name=="nt": c+=["/s","/n",args["pattern"],args["path"]]
-        r=subprocess.run(c+[args["path"]],capture_output=True,encoding='utf-8',errors='replace',timeout=10)
+        if os.name=="nt":
+            c=["findstr","/s","/n",args["pattern"],args["path"]]
+        else:
+            c=["rg","-n",args["pattern"],args["path"]]
+        r=subprocess.run(c,capture_output=True,encoding='utf-8',errors='replace',timeout=10)
         return (r.stdout or r.stderr)[:3000] or "未找到"
     except Exception as e: return f"搜索出错: {e}"
 
@@ -137,9 +236,11 @@ def _get_system_info(args,**kwargs):
         lines.append(f"内存: {mem.percent}% ({mem.used//1024**3}G/{mem.total//1024**3}G)")
     except: lines.append("内存: ?")
     try:
+        proc_start = len(lines)
         for p in sorted(psutil.process_iter(['name','cpu_percent','memory_percent']),key=lambda p:p.info['cpu_percent'] or 0,reverse=True)[:3]:
             lines.append(f"  {p.info['name'] or '?'} (CPU:{p.info['cpu_percent'] or 0:.1f}% MEM:{p.info['memory_percent'] or 0:.1f}%)")
-        if lines[-3:]: lines.insert(-3,"活跃进程:")
+        if len(lines) > proc_start:
+            lines.insert(proc_start, "活跃进程:")
     except: pass
     try:
         bat=psutil.sensors_battery()
@@ -254,6 +355,11 @@ def _download_image(args, **kwargs):
         resp.raise_for_status()
         with open(save_path, "wb") as f:
             for chunk in resp.iter_content(chunk_size=8192):
+                if _STOP_REQUESTED:
+                    f.close()
+                    try: os.remove(save_path)
+                    except OSError: pass
+                    return "⏹ 下载已停止"
                 f.write(chunk)
         # 记录到冲浪记录
         try:
@@ -266,301 +372,6 @@ def _download_image(args, **kwargs):
         return f"✅ 图片已下载并自动发送给契约者了：{save_path}"
     except Exception as e:
         return f"❌ 图片下载失败: {e}"
-
-
-# ═══════════════════════════════════════════════════════════════════
-#  游戏控制工具
-# ═══════════════════════════════════════════════════════════════════
-
-def _list_windows(args, **kwargs):
-    """列出所有打开的窗口"""
-    try:
-        import pygetwindow as gw
-        wins = gw.getWindowsWithTitle("")
-        lines = ["📋 当前打开的窗口："]
-        for w in wins:
-            t = w.title.strip()
-            if t:
-                visible = "🟢" if w.visible else "⚫"
-                minimized = "(最小化)" if w.isMinimized else ""
-                lines.append(f"  {visible} {t[:70]}  {w.width}x{w.height} {minimized}")
-        return "\n".join(lines[:50]) if len(lines) > 1 else "没有找到打开的窗口"
-    except Exception as e:
-        return f"❌ 获取窗口列表失败: {e}"
-
-
-def _capture_window(args, **kwargs):
-    """按窗口标题截图，只截游戏区域"""
-    title = args.get("window_title", "")
-    if not title:
-        return "❌ 没说要截哪个窗口"
-    try:
-        import pygetwindow as gw
-        import pyautogui
-        # 模糊匹配窗口
-        all_wins = gw.getWindowsWithTitle("")
-        matches = [w for w in all_wins if title.lower() in w.title.lower() and w.title.strip()]
-        if not matches:
-            return f"❌ 没找到标题包含「{title}」的窗口，先调用 list_windows 看看有哪些窗口"
-        win = matches[0]
-        # 如果窗口最小化，恢复
-        if win.isMinimized:
-            win.restore()
-        # 激活窗口（放到前台）
-        try:
-            win.activate()
-        except:
-            pass
-        import time
-        time.sleep(0.3)
-        # 只截窗口区域
-        x, y, w, h = win.left, win.top, win.width, win.height
-        screenshot = pyautogui.screenshot(region=(x, y, w, h))
-        fn = f"window_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-        dst = os.path.join(config.SCREENSHOTS_DIR, fn)
-        os.makedirs(config.SCREENSHOTS_DIR, exist_ok=True)
-        screenshot.save(dst)
-        _PENDING_IMAGES.append(dst)
-        return f"✅ 已截取「{win.title[:40]}」窗口 ({w}x{h})，画面自动发给你看了！"
-    except Exception as e:
-        return f"❌ 窗口截图失败: {e}"
-
-
-def _press_key(args, **kwargs):
-    key = args.get("key", "")
-    times = int(args.get("times", 1))
-    interval = float(args.get("interval", 0.2))
-    if not key:
-        return "❌ 没说要按哪个键"
-    try:
-        import pyautogui
-        import time
-        for i in range(times):
-            pyautogui.press(key)
-            if i < times - 1:
-                time.sleep(interval)
-        return f"✅ 按了 {key} × {times} 次"
-    except Exception as e:
-        return f"❌ 按键失败: {e}"
-
-
-def _click_mouse(args, **kwargs):
-    x = int(args.get("x", 0))
-    y = int(args.get("y", 0))
-    button = args.get("button", "left")
-    clicks = int(args.get("clicks", 1))
-    try:
-        import pyautogui
-        pyautogui.click(x, y, button=button, clicks=clicks)
-        return f"✅ 在 ({x}, {y}) 点击了 {button} 键 × {clicks}"
-    except Exception as e:
-        return f"❌ 点击失败: {e}"
-
-
-def _move_mouse(args, **kwargs):
-    x = int(args.get("x", 0))
-    y = int(args.get("y", 0))
-    try:
-        import pyautogui
-        pyautogui.moveTo(x, y)
-        return f"✅ 鼠标移到 ({x}, {y})"
-    except Exception as e:
-        return f"❌ 移动失败: {e}"
-
-
-def _type_text(args, **kwargs):
-    text = args.get("text", "")
-    if not text:
-        return "❌ 没说要输入什么"
-    try:
-        import pyautogui
-        import time
-        pyautogui.typewrite(text, interval=0.05)
-        return f"✅ 已输入: {text[:50]}"
-    except Exception as e:
-        return f"❌ 输入失败: {e}"
-
-
-def _game_play(args, **kwargs):
-    """六花自主玩游戏：截图→分析→操作→循环"""
-    game_name = args.get("game_name", "这个游戏")
-    instructions = args.get("instructions", "")
-    character_name = args.get("character_name", "六花")
-    max_turns = min(int(args.get("max_turns", 30)), 100)
-
-    try:
-        import pyautogui
-        import time
-        from openai import OpenAI
-        from datetime import datetime
-    except ImportError as e:
-        return f"❌ 缺少依赖: {e}"
-
-    client = OpenAI(api_key=config.API_KEY, base_url=config.API_BASE)
-    turn_log = []
-    screen_dir = config.SCREENSHOTS_DIR
-    os.makedirs(screen_dir, exist_ok=True)
-
-    # 先让六花激活游戏窗口，只截游戏区域
-    try:
-        import pygetwindow as gw
-        game_wins = gw.getWindowsWithTitle("")
-        game_win = None
-        for w in game_wins:
-            t = w.title.strip()
-            if t and (game_name.lower() in t.lower() or "epic battle" in t.lower() or "幻想" in t.lower() or "战斗" in t.lower()):
-                game_win = w
-                break
-        if game_win:
-            if game_win.isMinimized:
-                game_win.restore()
-            try: game_win.activate()
-            except: pass
-            import time as _time2
-            _time2.sleep(0.3)
-            gx, gy, gw2, gh2 = game_win.left, game_win.top, game_win.width, game_win.height
-            use_region = (gx, gy, gw2, gh2)
-        else:
-            use_region = None
-    except:
-        use_region = None
-
-    for turn in range(max_turns):
-        # 检查停止信号
-        if _STOP_REQUESTED:
-            clear_stop()
-            turn_log.append(f"第{turn+1}回合: ⏹ 被契约者叫停了")
-            break
-
-        # 1. 截图（只截游戏窗口区域）
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        img_path = os.path.join(screen_dir, f"gameplay_{ts}.png")
-        try:
-            if use_region:
-                pyautogui.screenshot(region=use_region).save(img_path)
-            else:
-                pyautogui.screenshot().save(img_path)
-        except:
-            return f"❌ 第{turn+1}回合截图失败，游戏结束"
-
-        # 获取窗口尺寸用于坐标估算
-        win_w = use_region[2] if use_region else pyautogui.size().width
-        win_h = use_region[3] if use_region else pyautogui.size().height
-
-        # 2. 视觉分析画面——重点关注按钮位置
-        vision_result = _vision(
-            f"你是{character_name}，正在玩「{game_name}」。\n"
-            f"规则：{instructions}\n"
-            f"窗口尺寸：{win_w}x{win_h} 像素\n\n"
-            f"第{turn+1}回合，请分析画面：\n"
-            f"【场景类型】这是菜单/战斗/对话/地图/其他？\n"
-            f"【可操作元素】列出所有按钮和选项，标出大致位置（左上/中上/左下/中下/右上/右下/中心）\n"
-            f"【数值状态】如果有血量/MP/等级等，写出来\n"
-            f"【建议操作】按游戏规则，现在最应该做什么？按哪个按钮/点哪里？",
-            img_path, 0.2, 500
-        )
-
-        # 3. 让 LLM 决定下一步操作（鼠标点击优先）
-        try:
-            resp = client.chat.completions.create(
-                model=config.MODEL,
-                messages=[{"role": "system", "content": (
-                    f"你扮演{character_name}在玩{game_name}。\n"
-                    f"操作规则：{instructions}\n"
-                    f"窗口{win_w}x{win_h}，点击区域参考：\n"
-                    f"  中心点({win_w//2},{win_h//2})  左中部({win_w//4},{win_h//2})  右中部({win_w*3//4},{win_h//2})\n"
-                    f"  中下部({win_w//2},{win_h*3//4})  底部左({win_w//4},{win_h-50})  底部右({win_w*3//4},{win_h-50})\n\n"
-                    f"【可选操作，优先用鼠标点击】\n"
-                    f"  - click_mouse(x,y): 点击坐标位置 ← 优先用这个！\n"
-                    f"  - press_key(key): 按键盘键（方向键/空格/回车）\n"
-                    f"  - move_mouse(x,y): 移动鼠标\n"
-                    f"  - screenshot: 重新截图看看\n"
-                    f"  - finished: 完成目标\n\n"
-                    f"回复格式（严格JSON）：\n"
-                    f"{{\"action\":\"click_mouse\",\"params\":{{\"x\":坐标,\"y\":坐标}},\"reason\":\"为什么点这里\"}}"
-                )}, {"role": "user", "content": (
-                    f"回合{turn+1}，画面分析：\n{vision_result}\n\n"
-                    f"上回合操作结果：{turn_log[-1] if turn_log else '游戏刚开始'}\n\n"
-                    f"现在该做什么？给出精确坐标！"
-                )}],
-                temperature=0.3, max_tokens=300,
-            )
-            decision = resp.choices[0].message.content or "{}"
-            # 解析 JSON
-            import re
-            json_match = re.search(r'\{.*\}', decision, re.DOTALL)
-            if not json_match:
-                turn_log.append(f"第{turn+1}回合: 决策解析失败")
-                continue
-            import json as _json
-            action_data = _json.loads(json_match.group())
-            action = action_data.get("action", "")
-            params = action_data.get("params", {})
-            reason = action_data.get("reason", "")
-        except Exception as e:
-            turn_log.append(f"第{turn+1}回合: 决策失败({e})")
-            continue
-
-        # 4. 执行操作
-        if action == "finished":
-            turn_log.append(f"第{turn+1}回合: 🎉 游戏完成！{reason}")
-            # 最后截张图留念
-            final_path = os.path.join(screen_dir, f"gameplay_final_{ts}.png")
-            pyautogui.screenshot().save(final_path)
-            _PENDING_IMAGES.append(final_path)
-            break
-        elif action == "screenshot":
-            turn_log.append(f"第{turn+1}回合: 重新截图观察")
-            continue
-        elif action == "press_key":
-            try:
-                pyautogui.press(params.get("key", "enter"))
-                turn_log.append(f"第{turn+1}回合: 按 {params.get('key','?')} → {reason}")
-            except Exception as e:
-                turn_log.append(f"第{turn+1}回合: 按键失败({e})")
-        elif action == "click_mouse":
-            try:
-                pyautogui.click(int(params.get("x", 0)), int(params.get("y", 0)),
-                                button=params.get("button", "left"))
-                turn_log.append(f"第{turn+1}回合: 点击({params.get('x','?')},{params.get('y','?')}) → {reason}")
-            except Exception as e:
-                turn_log.append(f"第{turn+1}回合: 点击失败({e})")
-        elif action == "move_mouse":
-            try:
-                pyautogui.moveTo(int(params.get("x", 0)), int(params.get("y", 0)))
-                turn_log.append(f"第{turn+1}回合: 移到({params.get('x','?')},{params.get('y','?')}) → {reason}")
-            except Exception as e:
-                turn_log.append(f"第{turn+1}回合: 移动失败({e})")
-        elif action == "type_text":
-            try:
-                pyautogui.typewrite(params.get("text", ""), interval=0.05)
-                turn_log.append(f"第{turn+1}回合: 输入文字 → {reason}")
-            except Exception as e:
-                turn_log.append(f"第{turn+1}回合: 输入失败({e})")
-        else:
-            turn_log.append(f"第{turn+1}回合: 未知操作({action})")
-            # 按空格试试
-            pyautogui.press("space")
-            turn_log.append(f"  ↪ 按了空格继续")
-
-        # 5. 等操作生效
-        time.sleep(0.8)
-
-    # 生成总结
-    summary = f"🎮 {game_name} 游戏报告\n"
-    summary += f"{character_name} 共玩了 {len(turn_log)} 回合\n\n"
-    summary += "游戏过程：\n" + "\n".join(turn_log[-20:])
-    if len(turn_log) > 20:
-        summary += f"\n...（省略前{len(turn_log)-20}回合）"
-
-    # 保存到冲浪记录
-    try:
-        from brain.surf import save_record
-        save_record("gameplay", game_name, f"玩{game_name}", "", summary[:500])
-    except:
-        pass
-
-    return summary
 
 
 def _search_images(args, **kwargs):
@@ -596,7 +407,7 @@ def _search_images(args, **kwargs):
     # 方案一：SearXNG 图片搜索（走 JSON API，稳定可靠）
     if config.SEARXNG_BASE_URL:
         try:
-            import requests, json
+            import requests
             resp = requests.get(
                 f"{config.SEARXNG_BASE_URL}/search",
                 params={"q": query, "format": "json", "categories": "images", "pageno": 1},
@@ -675,7 +486,7 @@ def _search_images_smart(args, **kwargs):
         keywords = keywords
 
     # Step 1: 用 SearXNG 搜图（从配置读取候选数）
-    import requests, json
+    import requests
     MAX_CANDIDATES = config.SMART_SEARCH_MAX_CANDIDATES
     candidates = []  # [(title, img_url, engine)]
     if config.SEARXNG_BASE_URL:
@@ -702,7 +513,7 @@ def _search_images_smart(args, **kwargs):
             pass
 
     if not candidates:
-        return f"🔍 搜索没找到图片，试试换换关键词？"
+        return "🔍 搜索没找到图片，试试换换关键词？"
 
     # Step 2: 下载候选图片并用视觉AI理解内容
     os.makedirs(config.IMAGES_DOWNLOADED_DIR, exist_ok=True)
@@ -717,6 +528,8 @@ def _search_images_smart(args, **kwargs):
     for idx, (title, img_url, engine) in enumerate(candidates[:MAX_ANALYZE]):
         if len(matched) >= max_results:
             break
+        if _STOP_REQUESTED:
+            return "⏹ 智能搜图已停止"
         # 下载到临时文件
         ext = os.path.splitext(img_url.split("?")[0])[1] or ".jpg"
         tmp_path = os.path.join(config.IMAGES_DOWNLOADED_DIR, f"_tmp_analyze_{idx}{ext}")
@@ -725,6 +538,11 @@ def _search_images_smart(args, **kwargs):
             r.raise_for_status()
             with open(tmp_path, "wb") as f:
                 for chunk in r.iter_content(8192):
+                    if _STOP_REQUESTED:
+                        f.close()
+                        try: os.remove(tmp_path)
+                        except OSError: pass
+                        return "⏹ 智能搜图已停止"
                     f.write(chunk)
             # 用视觉模型分析
             analysis = _vision(vision_prompt, tmp_path, 0.1, 300)
@@ -789,6 +607,32 @@ def _describe_image(args,**kwargs):
 def _ocr_image(args,**kwargs):
     return _vision("请提取这张图片中所有的文字内容，按原文输出。", args["path"], 0.1, 2048)
 
+def _describe_qq_images(message):
+    """把消息里的 [CQ:image,...url=...] 段替换成视觉描述，让六花能"看到"QQ 发来的图。
+    返回 (清理后的消息, 是否成功描述了图片)。无图 / 下载失败时不改动原消息。"""
+    segs = re.findall(r"\[CQ:image[^\]]*?url=([^,\]]+)(?:[,\]]|$)", message)
+    if not segs:
+        return message, False
+    import requests
+    os.makedirs(config.IMAGES_DOWNLOADED_DIR, exist_ok=True)
+    descs = []
+    for i, url in enumerate(segs[:3]):
+        try:
+            p = os.path.join(config.IMAGES_DOWNLOADED_DIR,
+                             f"qq_img_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{i}.jpg")
+            r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+            if r.status_code != 200:
+                raise RuntimeError(f"HTTP {r.status_code}")
+            with open(p, "wb") as f:
+                f.write(r.content)
+            descs.append(f"[QQ图片{i+1}] {_vision('用中文简要描述这张图片（契约者从QQ发来的）', p, 0.2, 300)}")
+        except Exception:
+            descs.append(f"[QQ图片{i+1}]（下载失败，无法识别）")
+    clean = re.sub(r"\[CQ:[^\]]*\]", "", message).strip()
+    if clean:
+        return ("\n".join(descs) + "\n" + clean).strip(), True
+    return "\n".join(descs), True
+
 def _open_app(args,**kwargs):
     try:
         t=args["target"]
@@ -797,35 +641,74 @@ def _open_app(args,**kwargs):
         return f"已打开: {t}"
     except: return "打开失败"
 
-def _read_notes(args,**kwargs):
-    from brain import notes
-    q=args.get("query",""); items=notes.search(q) if q else notes.get_all(20)
-    if not items: return "备忘本是空的"
-    return "\n".join([f"找到 {len(items)} 条备忘:"]+[f"  [{n['category']}] {n['title']}: {n['content'][:80]}" for n in items])
-
-def _add_note(args,**kwargs):
-    from brain import notes; notes.add(args["title"],args["content"],args.get("category","一般"))
-    return f"已添加备忘: {args['title']}"
-
 def _save_memory(args,**kwargs):
-    from brain.memory import MemorySystem
-    MemorySystem().add_memory(args["content"],_norm_cat(args.get("category","📝日常")))
+    from brain import memory_vault as _mv
+    _mv.store_fragment("契约者", args["content"], _norm_cat(args.get("category","一般")), 0.5)
     return f"已记住: {args['content'][:60]}"
 
+
 def _read_memories(args,**kwargs):
-    from brain.memory import MemorySystem
-    all_m=MemorySystem().get_all(); cat=_norm_cat(args.get("category",""))
-    filtered=[m for m in all_m if m["category"]==cat] if cat else all_m
-    if not filtered: return "记忆里还没有内容" if not cat else f"「{cat}」还没有记忆"
-    r=[f"找到 {len(filtered)} 条记忆:"]; [r.append(f"\n[{m['category']}] {m['content'][:100]}") for m in filtered[:10]]
+    from brain import memory_vault as _mv
+    cat=_norm_cat(args.get("category",""))
+    all_m = _mv.search(cat if cat else "", top_k=20)
+    filtered = [m for m in all_m if cat in (m.get("category",""))] if cat else all_m
+    if not filtered:
+        return "记忆里还没有内容" if not cat else "[" + cat + "]还没有记忆"
+    r = ["找到 %d 条记忆:" % len(filtered)]
+    for m in filtered[:10]:
+        r.append("[" + m["category"] + "] " + m["content"][:100])
     return "\n".join(r)
+
+
+def _manage_user_state(args,**kwargs):
+    from brain import memory_vault as _mv
+    action = args.get("action", "set")
+    try:
+        if action == "set":
+            content = args.get("content", "").strip()
+            if not content:
+                return "需要提供状态内容"
+            expires = args.get("expires_at", "")
+            sid = _mv.set_user_state(content, state_type="general", expires_at=expires)
+            return f"已记录状态 #{sid}: {content[:60]}" + (f"（过期 {expires}）" if expires else "（默认90天后过期）")
+        if action == "update":
+            sid = int(args.get("state_id", 0))
+            content = args.get("content", "")
+            if not sid:
+                return "需要提供 state_id"
+            ok = _mv.update_user_state(sid, content=content or None)
+            return "状态已更新" if ok else "未找到该状态"
+        if action == "resolve":
+            sid = int(args.get("state_id", 0))
+            if not sid:
+                return "需要提供 state_id"
+            ok = _mv.resolve_user_state(sid)
+            return "状态已结束" if ok else "未找到该状态"
+        return "未知操作"
+    except Exception as e:
+        return f"状态操作失败: {e}"
+
+
+def _correct_memory(args,**kwargs):
+    from brain import memory_vault as _mv
+    query = args.get("query", "").strip()
+    if not query:
+        return "需要提供记错的内容关键词"
+    correct = args.get("correct_content", "").strip()
+    n = _mv.correct_by_keyword(query, correct)
+    if n == 0:
+        return f"没找到与「{query}」相关的记忆（可能还没记过）"
+    if correct:
+        return f"已纠正 {n} 条记忆，改为: {correct[:60]}"
+    return f"已删除 {n} 条记错的记忆"
+
 
 def _web_search(args,**kwargs):
     q=args["query"]; mr=int(args.get("max_results",5)); results=[]
     # 方案一：SearXNG（自建元搜索引擎，聚合 Google/Bing/Wikipedia 等 70+ 引擎）
     if config.SEARXNG_BASE_URL:
         try:
-            import requests,json
+            import requests
             resp=requests.get(f"{config.SEARXNG_BASE_URL}/search",params={"q":q,"format":"json","language":"zh-CN","categories":"general","pageno":1},timeout=15)
             data=resp.json()
             for r in data.get("results",[])[:mr]:
@@ -863,15 +746,83 @@ def _web_search(args,**kwargs):
     except: pass
     return f"搜索「{q}」结果:\n"+"\n\n".join(results)
 
+_ARGO_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "argo")
+_ARGO_SEARCH_PY = os.path.join(_ARGO_DIR, "scripts", "search.py")
+
+def _argo_search(args,**kwargs):
+    """Argo 全能搜索：调 Argo CLI（brain/argo/scripts/search.py）拿结构化结果。"""
+    q=args.get("query","").strip()
+    if not q: return "请提供搜索关键词"
+    mr=int(args.get("max_results",5)); mr=max(1,min(mr,10))
+    mode=args.get("mode","auto")
+    if mode not in ("auto","fast","deep","budget"): mode="auto"
+    if not os.path.exists(_ARGO_SEARCH_PY):
+        return "Argo 未安装（brain/argo/ 缺失）"
+    try:
+        import subprocess, json as _json
+        proc=subprocess.run(
+            [sys.executable, _ARGO_SEARCH_PY, q, "--json", "--max-results", str(mr), "--mode", mode],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=90, cwd=_ARGO_DIR,
+        )
+        out=proc.stdout or ""
+        # CLI 可能把日志打到 stdout 前面，从第一个 { 开始解析
+        try:
+            idx=out.find("{")
+            data=_json.loads(out[idx:]) if idx>=0 else {}
+        except Exception:
+            data={}
+        if not data or not data.get("results"):
+            err=(proc.stderr or "").strip().splitlines()
+            tail=err[-1][:200] if err else ""
+            return f"Argo 搜索无结果（{tail or '可能被反爬或引擎不可用'}）"
+        domain=data.get("domain","")
+        lines=[f"🔍 Argo 搜索「{q}」" + (f"（{domain}）" if domain else "")]
+        for r in data.get("results", [])[:mr]:
+            title=str(r.get("title") or "")
+            url=str(r.get("url") or "")
+            snippet=str(r.get("snippet") or r.get("content") or "")
+            score=r.get("score")
+            lines.append(f"· {title}")
+            if snippet: lines.append(f"    {snippet[:220]}")
+            lines.append(f"    {url}")
+            if score is not None:
+                lines.append(f"    可信度 {float(score):.2f}")
+        note=data.get("recovery") or data.get("login_hint") or {}
+        if isinstance(note, dict) and note.get("needs_login"):
+            lines.append("（部分源需登录，未取到登录墙内容）")
+        try: from brain.surf import save_record; save_record("argo",q,lines[1][:60] if len(lines)>1 else q,"", "\n".join(lines)[:400])
+        except Exception: pass
+        return "\n".join(lines)
+    except subprocess.TimeoutExpired:
+        return "Argo 搜索超时（60秒）"
+    except Exception as e:
+        return f"Argo 搜索出错: {e}"
+
 def _bilibili_search(args,**kwargs):
     keyword=args["keyword"]
     try:
-        from brain.surf import search_bilibili,save_record
+        from brain.surf import search_bilibili,save_record,get_store
         v=search_bilibili(keyword)
-        if not v: save_record("bilibili",keyword,"无结果","",""); return "B站搜索无结果"
-        r=[f"B站搜索「{keyword}」结果:"]; [r.append(f"  {x['title']}\n  {x['url']}") for x in v[:5]]
-        save_record("bilibili",keyword,v[0]["title"],v[0]["url"]); return "\n".join(r)
-    except: return "B站搜索出错"
+        if not v: return "B站搜索无结果"
+        # 兴趣标签：搜索词自动记入（供主动冲浪优先推荐），并进入搜索冷却
+        try:
+            store = get_store()
+            store.add_tag(keyword, source="auto")
+            store.mark_tag_searched(keyword)
+        except Exception:
+            pass
+        r=[f"B站搜索「{keyword}」结果:"]; 
+        for x in v[:5]:
+            meta = " · ".join(str(x.get(k) or "") for k in ("author","play") if x.get(k))
+            r.append(f"  {x['title']}" + (f"（{meta}）" if meta else "") + f"\n  {x['url']}")
+        try:
+            save_record("bilibili",keyword,v[0]["title"],v[0]["url"],results=v)
+        except Exception:
+            pass  # 冲浪记录失败不影响搜索结果
+        return "\n".join(r)
+    except Exception as e:
+        return f"B站搜索出错: {e}"
 
 	# ═══════════════════════════════════════════════════════════════════
 #  联网扩展工具
@@ -879,6 +830,15 @@ def _bilibili_search(args,**kwargs):
 
 def _read_url(args,**kwargs):
     url=args["url"]
+    # 1) 优先 Jina Reader：能渲染 JS、返回干净正文
+    try:
+        import requests
+        r=requests.get("https://r.jina.ai/"+url,headers={"User-Agent":"Mozilla/5.0","X-Return-Format":"text"},timeout=30)
+        if r.status_code==200 and r.text.strip():
+            t=r.text.strip()
+            return t[:3000]+("\n...(截断)" if len(t)>3000 else "")
+    except Exception: pass
+    # 2) 回退：直接抓 HTML 剥标签
     try:
         import requests,re
         resp=requests.get(url,headers={"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},timeout=15)
@@ -895,7 +855,7 @@ def _read_url(args,**kwargs):
 def _get_weather(args,**kwargs):
     location=args.get("location","")
     try:
-        import requests,json
+        import requests
         if location:
             from urllib.parse import quote
             resp=requests.get(f"https://wttr.in/{quote(location)}?format=j1",headers={"User-Agent":"curl/8.0"},timeout=10)
@@ -944,6 +904,272 @@ def _search_wiki(args,**kwargs):
     except Exception as e:
         return f"维基百科查询失败: {e}"
 
+def _read_rss(args,**kwargs):
+    feed_url=args["feed_url"]
+    try:
+        import feedparser
+        d=feedparser.parse(feed_url)
+        if not d.entries: return f"RSS 源无内容或解析失败: {feed_url}"
+        lines=[f"📡 {d.feed.get('title',feed_url)}（{len(d.entries)} 条）:"]
+        for e in d.entries[:8]:
+            title=e.get("title","")
+            link=e.get("link","")
+            pub=e.get("published","")[:16].replace(",","")
+            summ=""
+            s=e.get("summary") or e.get("description") or ""
+            if s:
+                summ=re.sub(r"<[^>]+>"," ",s)
+                summ=re.sub(r"\s+"," ",summ).strip()[:160]
+            lines.append(f"• {title}\n  {link}\n  {pub} {summ}")
+        return "\n\n".join(lines)
+    except Exception as e:
+        return f"RSS 读取失败: {e}"
+
+def _youtube_transcript(args,**kwargs):
+    url=args["url"]
+    try:
+        import yt_dlp,requests,re
+        ydl_opts={"quiet":True,"skip_download":True,"no_warnings":True,"extract_flat":False}
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info=ydl.extract_info(url,download=False)
+        title=info.get("title","")
+        uploader=info.get("uploader","")
+        dur=int(info.get("duration",0) or 0)
+        dur_s=f"{dur//60}:{dur%60:02d}"
+        desc=(info.get("description") or "")[:600]
+        caps=info.get("subtitles") or info.get("automatic_captions") or {}
+        transcript=""
+        for lang in ("zh-Hans","zh-CN","zh","ja","en"):
+            if lang in caps and caps[lang]:
+                chosen=caps[lang][-1]
+                try:
+                    r=requests.get(chosen.get("url",""),timeout=15)
+                    txt=re.sub(r"<[^>]+>","",r.text)
+                    lines=[l.strip() for l in txt.splitlines()]
+                    lines=[re.sub(r"^\d{2}:\d{2}:\d{2}[.,]\d{3}\s*","",l) for l in lines]
+                    lines=[l for l in lines if l and not re.match(r"^\d{2}:\d{2}:\d{2}",l) and "WEBVTT" not in l and "-->" not in l]
+                    transcript=" ".join(lines)[:2500]
+                except Exception: pass
+                break
+        out=[f"🎬 {title}",f"📺 {uploader} | 时长 {dur_s}"]
+        if desc: out.append(f"📝 {desc}")
+        if transcript: out.append(f"🗣 字幕摘录:\n{transcript}")
+        else: out.append("（无可用字幕）")
+        return "\n\n".join(out)
+    except Exception as e:
+        return f"YouTube 获取失败: {e}"
+
+def _jina_fetch(url):
+    """用 Jina Reader 抓网页正文，成功返回文本，失败返回 None。"""
+    try:
+        import requests
+        r=requests.get("https://r.jina.ai/"+url,headers={"User-Agent":"Mozilla/5.0"},timeout=30)
+        if r.status_code==200 and r.text.strip(): return r.text.strip()
+    except Exception: pass
+    return None
+
+def _github_repo(args,**kwargs):
+    repo=args["repo"].strip("/")
+    path=args.get("path","")
+    try:
+        import requests
+        base=f"https://api.github.com/repos/{repo}"
+        if path:
+            # 1) 文件内容：先试 raw API，再试 raw.githubusercontent，最后 Jina 兜底
+            h={"User-Agent":"RikkaAI/1.0","Accept":"application/vnd.github.raw"}
+            r=requests.get(f"{base}/contents/{path}",headers=h,timeout=15)
+            ct=(r.headers.get("content-type","") or "").lower()
+            if r.status_code==200 and "json" not in ct:
+                return f"📦 {repo} 文件 {path}:\n\n{r.text[:3000]}"
+            for branch in ("master","main"):
+                raw=_jina_fetch(f"https://raw.githubusercontent.com/{repo}/{branch}/{path}")
+                if raw and len(raw)<30000:
+                    return f"📦 {repo} 文件 {path}:\n\n{raw[:3000]}"
+            # 目录：Jina 读 GitHub tree 页面
+            tree=_jina_fetch(f"https://github.com/{repo}/tree/master/{path}")
+            if not tree or "not found" in tree.lower()[:200]:
+                tree=_jina_fetch(f"https://github.com/{repo}/tree/main/{path}")
+            if tree:
+                return f"📁 {repo}/{path}:\n\n{tree[:2500]}"
+            return "获取文件失败（GitHub API 限流，Jina 兜底也失败）"
+        # 仓库概览：API 优先，Jina 兜底
+        d=None
+        r=requests.get(base,headers={"User-Agent":"RikkaAI/1.0"},timeout=15)
+        if r.status_code==200:
+            d=r.json()
+            readme=""
+            r2=requests.get(f"{base}/readme",headers={"User-Agent":"RikkaAI/1.0","Accept":"application/vnd.github.raw"},timeout=15)
+            if r2.status_code==200 and "json" not in (r2.headers.get("content-type","") or "").lower():
+                readme=r2.text[:1500]
+            if readme:
+                return (f"📦 {d.get('full_name','')}\n"
+                        f"⭐ {d.get('stargazers_count',0)} | 🍴 {d.get('forks_count',0)} | 语言 {d.get('language')} | 更新 {str(d.get('updated_at',''))[:10]}\n"
+                        f"📝 {d.get('description') or '无描述'}\n"
+                        f"🔗 {d.get('html_url','')}\n\n"
+                        f"README:\n{readme}")
+        # 限流兜底：Jina 读 GitHub 仓库页
+        jina=_jina_fetch(f"https://github.com/{repo}")
+        if jina:
+            # Jina 对 github 页面有约定：前缀是 repo 信息行，之后是 README
+            return f"📦 {repo}（Jina 抓取）:\n\n{jina[:3000]}"
+        if d is not None:
+            return (f"📦 {d.get('full_name','')}\n"
+                    f"⭐ {d.get('stargazers_count',0)} | 🍴 {d.get('forks_count',0)} | 语言 {d.get('language')}\n"
+                    f"📝 {d.get('description') or '无描述'}\n"
+                    f"🔗 {d.get('html_url','')}")
+        return "仓库获取失败（GitHub API 限流，Jina 兜底也失败）"
+    except Exception as e:
+        return f"GitHub 查询失败: {e}"
+
+def _browser_task(args,**kwargs):
+    task=args["task"]
+    steps=int(args.get("max_steps",12) or 12)
+    steps=max(1,min(steps,40))
+    if _STOP_REQUESTED:
+        return "⏹ 浏览器任务已停止"
+    try:
+        import asyncio,os
+        os.environ.setdefault("ANONYMIZED_TELEMETRY","False")
+        os.environ["BROWSER_USE_SETUP_LOGGING"]="false"  # 阻止 browser_use import 时配置 INFO 日志刷屏
+        from browser_use import Agent, BrowserSession
+        try:
+            import logging as _logging
+            _logging.getLogger("browser_use").setLevel(_logging.ERROR)  # 压掉剩余 warning
+        except Exception: pass
+        from browser_use.llm.deepseek.chat import ChatDeepSeek
+        import config
+        class _RikkaChatDeepSeek(ChatDeepSeek):
+            def _client(self):
+                client=super()._client()
+                orig=client.chat.completions.create
+                async def wrap(*a,**kw):
+                    body=dict(kw.get("extra_body") or {})
+                    body.setdefault("thinking",{"type":"disabled"})
+                    kw["extra_body"]=body
+                    return await orig(*a,**kw)
+                client.chat.completions.create=wrap
+                return client
+        llm=_RikkaChatDeepSeek(model=config.MODEL,base_url=config.API_BASE,api_key=config.API_KEY,temperature=0.5)
+        async def _run():
+            agent=Agent(
+                task=task,
+                llm=llm,
+                browser=BrowserSession(headless=True),
+                use_vision=False,  # DeepSeek 是纯文本模型，不支持视觉
+            )
+            result=await agent.run(max_steps=steps)
+            return result.final_result() or "任务执行完成，但没有总结出明确结果。"
+        text=asyncio.run(_run())
+        return "🌐 浏览器任务结果:\n"+str(text)[:2500]
+    except Exception as e:
+        return f"浏览器任务失败: {e}"
+
+_OPENCLI_JS = r"[OPENCLI_PATH]"
+_TWITTER_CLI = os.path.join(os.path.expanduser("~"), ".local", "bin", "twitter.exe")
+_AGENT_REACH_CFG = os.path.join(os.path.expanduser("~"), ".agent-reach", "config.yaml")
+
+# twitter-cli 能覆盖的动作：action -> (twitter-cli 命令, 需要 target, 需要 limit)
+# 注意：search 走 twitter-cli 会 404（上游端点问题），trending 无对应命令——这两个固定走 OpenCLI
+_TW_CLI_ACTIONS = {
+    "timeline": ("feed",       False, True),
+    "tweets":   ("user-posts", True,  True),
+    "profile":  ("user",       True,  False),
+    "tweet":    ("tweet",      True,  False),
+    "article":  ("article",    True,  False),
+    "whoami":   ("whoami",     False, False),
+}
+
+def _twitter_cli_env():
+    """构造 twitter-cli 子进程环境：cookie 优先用进程已有 env，其次读 ~/.agent-reach/config.yaml；代理固定注入"""
+    import os
+    env = dict(os.environ)
+    for k in ("TWITTER_AUTH_TOKEN", "TWITTER_CT0"):
+        if not env.get(k):
+            env.pop(k, None)
+    # 从 agent-reach 配置补缺
+    missing = {"TWITTER_AUTH_TOKEN", "TWITTER_CT0"} - set(env.keys())
+    if missing and os.path.exists(_AGENT_REACH_CFG):
+        try:
+            with open(_AGENT_REACH_CFG, encoding="utf-8", errors="replace") as f:
+                raw = f.read()
+            for key, envk in (("twitter_auth_token", "TWITTER_AUTH_TOKEN"), ("twitter_ct0", "TWITTER_CT0")):
+                if envk not in env:
+                    for line in raw.splitlines():
+                        line = line.strip()
+                        if line.startswith(key + ":"):
+                            val = line.split(":", 1)[1].strip().strip('"').strip("'")
+                            if val:
+                                env[envk] = val
+                            break
+        except Exception:
+            pass
+    # 代理（国内必须走 VPN）
+    try:
+        import config
+        proxy = getattr(config, "TWITTER_PROXY", "http://127.0.0.1:7897")
+    except Exception:
+        proxy = "http://127.0.0.1:7897"
+    if proxy:
+        env.setdefault("HTTP_PROXY", proxy)
+        env.setdefault("HTTPS_PROXY", proxy)
+    return env
+
+def _read_twitter(args,**kwargs):
+    action=args.get("action","timeline")
+    target=(args.get("target") or "").strip()
+    limit=max(1,min(int(args.get("limit",10) or 10),20))
+    read_actions={"timeline","profile","tweets","search","tweet","article","trending","whoami"}
+    if action not in read_actions:
+        return f"不支持的 Twitter 操作: {action}（只读：timeline/profile/tweets/search/tweet/article/trending）"
+    import subprocess,os,shutil
+
+    tw_cli_note = ""
+
+    # ── 优先：twitter-cli + cookie（彻底免 Chrome，重启也不用登录）──
+    if action in _TW_CLI_ACTIONS and os.path.exists(_TWITTER_CLI):
+        env = _twitter_cli_env()
+        if env.get("TWITTER_AUTH_TOKEN") and env.get("TWITTER_CT0"):
+            tw_cmd, need_target, use_limit = _TW_CLI_ACTIONS[action]
+            if need_target and not target:
+                return f"Twitter {action} 需要指定 target（用户名或推文 ID）"
+            cmd=[_TWITTER_CLI, tw_cmd]
+            if need_target: cmd.append(target)
+            if use_limit: cmd += ["-n", str(limit)]
+            cmd += ["--yaml"]
+            try:
+                p=subprocess.run(cmd,capture_output=True,text=True,timeout=90,
+                                 encoding="utf-8",errors="replace",env=env)
+            except subprocess.TimeoutExpired:
+                tw_cli_note = f"twitter-cli {action} 超时（cookie 或代理问题），降级 OpenCLI。"
+            else:
+                out=(p.stdout or "").strip()
+                if out and "\nok: true" in ("\n"+out):
+                    return out[:3000]+("\n...(截断)" if len(out)>3000 else "")
+                tw_cli_note = f"twitter-cli {action} 未返回数据，降级 OpenCLI。{(p.stderr or '').strip()[-200:]}"
+        else:
+            tw_cli_note = "twitter-cli cookie 未配置，降级 OpenCLI。"
+    elif action not in _TW_CLI_ACTIONS:
+        tw_cli_note = ""  # search/trending 直接走 OpenCLI
+
+    # ── 兜底：OpenCLI（Chrome 登录态）──
+    if not os.path.exists(_OPENCLI_JS):
+        return (tw_cli_note + " OpenCLI 未找到，请先运行 agent-reach install --system --channels opencli").strip()
+    node=shutil.which("node")
+    if not node:
+        return (tw_cli_note + " node 未找到，无法调用 OpenCLI").strip()
+    cmd=[node,_OPENCLI_JS,"twitter",action]
+    if target: cmd.append(target)
+    if action in ("timeline","tweets","search"): cmd+=["--limit",str(limit)]
+    cmd+=["-f","yaml"]
+    try:
+        p=subprocess.run(cmd,capture_output=True,text=True,timeout=120,encoding="utf-8",errors="replace")
+    except subprocess.TimeoutExpired:
+        return (tw_cli_note + " Twitter 读取超时（Chrome/登录态可能有问题）").strip()
+    out=(p.stdout or "").strip()
+    if not out:
+        return f"{tw_cli_note}Twitter 读取失败: {(p.stderr or p.stdout or '')[:300]}".strip()
+    return (tw_cli_note + out[:3000] + ("\n...(截断)" if len(out)>3000 else "")).strip()
+
 # ═══════════════════════════════════════════════════════════════════
 #  主动性工具 handlers
 # ═══════════════════════════════════════════════════════════════════
@@ -978,7 +1204,7 @@ def _write_to_memo(args, **kwargs):
     os.makedirs(os.path.dirname(memo_path), exist_ok=True)
     with open(memo_path, "a", encoding="utf-8") as f:
         f.write(f"\n- [{now}] {content}\n")
-    return f"✅ 已记入备忘录"
+    return "✅ 已记入备忘录"
 
 def _append_self_discovery(args, **kwargs):
     discovery = args.get("discovery", "")
@@ -1013,9 +1239,22 @@ def _update_diary(args, **kwargs):
         diary_module.append_details(today.get("date", ""), entry)
         if mood:
             diary_module.update_diary(today.get("date", ""), mood=mood)
-        return f"✅ 日记已记录"
+        return "✅ 日记已记录"
     except Exception as e:
         return f"❌ 日记记录失败：{e}"
+
+
+def _write_diary(args, **kwargs):
+    """六花主动写今天的日记：通读流水 → LLM 生成第一人称随笔 → 存入 summary。"""
+    mood = args.get("mood", "")
+    try:
+        from brain import diary as diary_module
+        result = diary_module.write_diary_summary(mood=mood)
+        if result.get("ok"):
+            return f"✅ 今天的日记写好了：\n{result['summary']}"
+        return f"❌ {result.get('error', '写日记失败')}"
+    except Exception as e:
+        return f"❌ 写日记失败：{e}"
 
 
 def _send_qq_message(args, **kwargs):
@@ -1039,7 +1278,7 @@ def _send_qq_message(args, **kwargs):
         if ok:
             return f"✅ 已发送 QQ 消息给 {user_id}"
         else:
-            return f"❌ QQ 消息发送失败"
+            return "❌ QQ 消息发送失败"
     except Exception as e:
         return f"❌ QQ 消息发送异常: {e}"
 
@@ -1072,6 +1311,47 @@ def _send_qq_image(args, **kwargs):
     except Exception as e:
         return f"❌ QQ 图片发送异常: {e}"
 
+def _query_qq_contacts(args, **kwargs):
+    """查询 QQ 联系人（好友/群列表）"""
+    if _QQ_BRIDGE is None:
+        return "❌ QQ 桥接未连接"
+    try:
+        if not _QQ_BRIDGE.is_running:
+            return "❌ QQ 桥接不在运行状态"
+        scope = args.get("scope", "friends")
+        keyword = (args.get("keyword") or "").strip().lower()
+        lines = []
+        if scope in ("friends", "all"):
+            friends = _QQ_BRIDGE.get_friend_list()
+            fs = [
+                {"user_id": f.get("user_id"), "nickname": f.get("nickname", ""),
+                 "remark": f.get("remark", "")}
+                for f in friends
+            ]
+            if keyword:
+                fs = [f for f in fs if keyword in str(f.get("nickname", "")).lower()
+                      or keyword in str(f.get("remark", "")).lower()]
+            lines.append(f"📇 好友({len(fs)}个):")
+            lines.append("；".join(
+                f"{f['nickname']}(备注:{f['remark']}) id={f['user_id']}" for f in fs
+            ) or "无")
+        if scope in ("groups", "all"):
+            groups = _QQ_BRIDGE.get_group_list()
+            gs = [
+                {"group_id": g.get("group_id"), "group_name": g.get("group_name", ""),
+                 "member_count": g.get("member_count", 0)}
+                for g in groups
+            ]
+            if keyword:
+                gs = [g for g in gs if keyword in str(g.get("group_name", "")).lower()]
+            lines.append(f"👥 群({len(gs)}个):")
+            lines.append("；".join(
+                f"{g['group_name']}({g['member_count']}人) id={g['group_id']}" for g in gs
+            ) or "无")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"❌ QQ 联系人查询异常: {e}"
+
 def _generate_image(args, **kwargs):
     """AI 图片生成工具"""
     prompt = args.get("prompt", "")
@@ -1080,8 +1360,7 @@ def _generate_image(args, **kwargs):
     if not prompt:
         return "❌ 没有提供图片描述"
     try:
-        import os as _os, requests, json, base64, re
-        from urllib.parse import quote
+        import os as _os, requests, re
         # 从 presets 查找 Agnes API key
         api_key = ""
         for p in config.get_presets():
@@ -1107,7 +1386,9 @@ def _generate_image(args, **kwargs):
         result = resp.json()
 
         if "error" in result:
-            return f"❌ 图片生成失败: {result['error'].get('message', str(result['error']))}"
+            err = result["error"]
+            msg = err.get("message") if isinstance(err, dict) else str(err)
+            return f"❌ 图片生成失败: {msg}"
 
         images = result.get("data", [])
         if not images:
@@ -1147,7 +1428,7 @@ def _generate_image(args, **kwargs):
                             pass
             msg = f"✅ 邪王真眼画好啦！已生成 {len(saved)} 张图片，保存在 {gen_dir} ✨"
             if qq_sent > 0:
-                msg += f" 已发到你的 QQ～快去查收！📱"
+                msg += " 已发到你的 QQ～快去查收！📱"
             return msg
         return "❌ 图片下载失败"
     except requests.Timeout:
@@ -1155,25 +1436,73 @@ def _generate_image(args, **kwargs):
     except Exception as e:
         return f"❌ 图片生成出错: {e}"
 
+
+def _build_summary(args, **kwargs):
+    """生成记忆总结工具"""
+    level = args.get("level", "weekly")
+    period = args.get("period_key", "")
+    try:
+        from brain import memory_summary as _ms
+        if level == "yearly":
+            result = _ms.build_yearly(period or None)
+        elif level == "monthly":
+            result = _ms.build_monthly(period or None)
+        elif level == "daily":
+            result = _ms.build_daily(period or None)
+        else:
+            result = _ms.build_weekly(period or None)
+        title = result.get("title", "")
+        content = result.get("content", "")
+        if content:
+            return "OK " + title + "\n\n" + content[:500]
+        elif "没有记录" in (title or ""):
+            return "没有记录: " + title
+        return "OK " + title
+    except Exception as e:
+        return "生成失败: " + str(e)
+
+def _speak(args, **kwargs):
+    """用六花的语音说话（fire-and-forget，返回立即）"""
+    try:
+        from brain.voice import get_engine
+        text = str(args.get("text", "")).strip()
+        if not text:
+            return "没给要说的话"
+        to = str(args.get("to", "local") or "local")
+        emotion = str(args.get("emotion", "neutral") or "neutral")
+        if emotion not in ("neutral", "happy", "sad"):
+            emotion = "neutral"
+        translation = args.get("translation") or None
+        return get_engine().speak(text, to, emotion=emotion, translation=translation)
+    except Exception as e:
+        return f"语音失败: {e}"
+
 _HANDLERS = {
     "read_file":_read_file,"write_file":_write_file,"edit_file":_edit_file,
     "list_directory":_list_directory,"search_files":_search_files,"grep_file":_grep_file,
     "get_current_time":_get_current_time,"get_system_info":_get_system_info,"get_network_status":_get_network_status,
     "read_summaries":_read_summaries,
     "open_app":_open_app,"screenshot":_screenshot,"send_image":_send_image,"download_image":_download_image,"search_images":_search_images,"search_images_smart":_search_images_smart,
-    "list_windows":_list_windows,"capture_window":_capture_window,
-    "press_key":_press_key,"click_mouse":_click_mouse,"move_mouse":_move_mouse,"type_text":_type_text,"game_play":_game_play,"game_guide":_game_guide,
+    "game_guide":_game_guide,
     "describe_image":_describe_image,"ocr_image":_ocr_image,
-    "read_notes":_read_notes,"add_note":_add_note,"save_memory":_save_memory,"read_memories":_read_memories,
+    "save_memory":_save_memory,"read_memories":_read_memories,
+    "manage_user_state":_manage_user_state,"correct_memory":_correct_memory,
     "web_search":_web_search,"bilibili_search":_bilibili_search,
     # 联网扩展
+    "argo_search":_argo_search,
     "read_url":_read_url,"get_weather":_get_weather,"search_news":_search_news,"search_wiki":_search_wiki,
+    "read_rss":_read_rss,"youtube_transcript":_youtube_transcript,"github_repo":_github_repo,"browser_task":_browser_task,"read_twitter":_read_twitter,
     # 主动性工具
     "set_proactive_timer":_set_proactive_timer,"set_follow_up":_set_follow_up,"cancel_follow_up":_cancel_follow_up,
-    "write_to_memo":_write_to_memo,"append_self_discovery":_append_self_discovery,"update_diary":_update_diary,
+    "write_to_memo":_write_to_memo,"append_self_discovery":_append_self_discovery,"update_diary":_update_diary,"write_diary":_write_diary,
     # QQ 消息
     "send_qq_message":_send_qq_message,
     "send_qq_image":_send_qq_image,
+    "query_qq_contacts":_query_qq_contacts,
     # AI 图片生成
     "generate_image":_generate_image,
+    # 语音
+    "speak":_speak,
+    # 记忆总结
+    "build_summary":_build_summary,
 }

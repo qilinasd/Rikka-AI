@@ -1,211 +1,285 @@
+"""Persistent navigation and conversation list for the desktop workspace.
+
+The 190px navigation is owned by the main window.  Home and chat only swap
+the content to its right, while chat adds its own session-list column.
 """
-RikkaAI - 小鸟游六花 角色立绘组件
-"""
+
 import os
+
+from PyQt5.QtCore import QSize, Qt, pyqtSignal
+from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel,
-    QScrollArea, QFrame,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
 )
-from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QPixmap, QFont
 
 import config
+from brain import history
+from gui.image_utils import circular_pixmap
+from gui.settings_assets import settings_asset_icon, tinted_settings_asset_icon
 
 
-class CharacterWidget(QWidget):
-    """六花角色展示面板"""
+class SessionItemWidget(QWidget):
+    def __init__(self, session, parent=None):
+        super().__init__(parent)
+        self.setObjectName("SessionItemCard")
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(9, 9, 8, 9)
+        layout.setSpacing(9)
 
-    STATUS_TEXTS = [
-        "邪王真眼 激活中 ✨",
-        "魔力充填中… 🔮",
-        "感知境界线中 🌙",
-    ]
+        avatar = QLabel()
+        avatar.setObjectName("SessionAvatar")
+        avatar.setFixedSize(36, 36)
+        avatar.setPixmap(circular_pixmap(os.path.join(config.IMAGES_DIR, "avatar.png"), 36))
+        layout.addWidget(avatar)
 
-    QUOTES = [
-        "「寄宿在我左眼的黑暗之力啊…」",
-        "「这是…契约的证明！」",
-        "「邪王真眼看穿了！」",
-        "「哼，可别小看了我的力量」",
-        "「现充爆炸吧！」",
-        "「黑暗之力…要溢出来了…！」",
-        "「不行！不行！绝对不行！」",
-        "「勇太…！？」",
-        "「我是普通的女高中生啦！」",
-        "「不，黑暗之力是永恒的」",
-    ]
+        copy = QVBoxLayout()
+        copy.setContentsMargins(0, 0, 0, 0)
+        copy.setSpacing(3)
+        title = QLabel(session.get("title") or "新会话")
+        title.setObjectName("SessionTitle")
+        title.setToolTip(title.text())
+        copy.addWidget(title)
+        count = int(session.get("msg_count", 0))
+        summary = QLabel(f"与六花的对话 · {count} 条消息")
+        summary.setObjectName("SessionSummary")
+        copy.addWidget(summary)
+        layout.addLayout(copy, 1)
+
+        updated = str(session.get("updated_at", ""))
+        timestamp = QLabel(updated[5:10] if len(updated) >= 10 else "")
+        timestamp.setObjectName("SessionTime")
+        layout.addWidget(timestamp, 0, Qt.AlignTop)
+
+
+class NavSidebar(QWidget):
+    """统一尺寸的窄导航栏（190px），与首页侧栏保持一致。"""
+
+    home_requested = pyqtSignal()
+    chat_requested = pyqtSignal()
+    history_requested = pyqtSignal()
+    memo_requested = pyqtSignal()
+    summary_requested = pyqtSignal()
+    diary_requested = pyqtSignal()
+    surf_requested = pyqtSignal()
+    tools_requested = pyqtSignal()
+    settings_requested = pyqtSignal()
+
+    def __init__(self, parent=None, active_section="chat"):
+        super().__init__(parent)
+        self.setObjectName("ChatNavSidebar")
+        self.setFixedWidth(190)
+        self._active_section = active_section
+        self._nav_buttons = {}
+        self._appearance = None
+        self._setup_ui()
+
+    def _setup_ui(self):
+        root = QVBoxLayout(self)
+        root.setContentsMargins(6, 16, 10, 14)
+        root.setSpacing(4)
+
+        brand = QHBoxLayout()
+        brand.setSpacing(7)
+        mark = QLabel()
+        mark.setFixedSize(32, 32)
+        logo_path = os.path.join(
+            config.ASSETS_DIR, "images", "branding", "rikka_mark.png"
+        )
+        mark.setPixmap(QIcon(logo_path).pixmap(30, 30))
+        brand.addWidget(mark)
+        name = QLabel("RikkaAI")
+        name.setObjectName("ChatBrand")
+        brand.addWidget(name)
+        brand.addStretch()
+        root.addLayout(brand)
+        root.addSpacing(14)
+
+        nav_items = [
+            ("home", "首页", self.home_requested),
+            ("chat", "对话", self.chat_requested),
+            ("knowledge", "知识库", self.summary_requested),
+            ("music", "AI 音乐", self.tools_requested),
+            ("diary", "日记", self.diary_requested),
+            ("memory", "记忆", self.memo_requested),
+            ("history", "历史记录", self.history_requested),
+            ("workflow", "冲浪记录", self.surf_requested),
+            ("settings", "设置", self.settings_requested),
+        ]
+        for icon_name, text, signal in nav_items:
+            button = QPushButton(text)
+            button.setObjectName("ChatNavButton")
+            button.setProperty("active", icon_name == self._active_section)
+            button.setIcon(settings_asset_icon(f"sidebar.{icon_name}"))
+            button.setIconSize(QSize(17, 17))
+            button.setFixedHeight(40)
+            button.setCursor(Qt.PointingHandCursor)
+            button.clicked.connect(
+                lambda _checked=False, section=icon_name, target=signal:
+                self._activate_and_emit(section, target)
+            )
+            self._nav_buttons[icon_name] = button
+            root.addWidget(button)
+        root.addStretch()
+
+    def _activate_and_emit(self, section, signal):
+        self.set_active_section(section)
+        signal.emit()
+
+    def set_active_section(self, section):
+        self._active_section = section
+        for name, button in self._nav_buttons.items():
+            button.setProperty("active", name == section)
+            button.style().unpolish(button)
+            button.style().polish(button)
+            button.update()
+        self._refresh_icons()
+
+    def apply_appearance(self, appearance):
+        self._appearance = appearance
+        self._refresh_icons()
+
+    def _refresh_icons(self):
+        if self._appearance is None:
+            return
+        for name, button in self._nav_buttons.items():
+            color = (
+                self._appearance.accent_hover
+                if name == self._active_section else self._appearance.accent
+            )
+            button.setIcon(tinted_settings_asset_icon(f"sidebar.{name}", color))
+
+
+class SessionListPanel(QWidget):
+    """独立的会话列表列。"""
+
+    new_conversation_requested = pyqtSignal()
+    session_selected = pyqtSignal(int)
+    history_requested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setObjectName("CharacterWidget")
-        self.setFixedWidth(config.CHARACTER_PANEL_WIDTH)
-
-        # 扫描可用头像
-        self._avatars = self._scan_avatars()
-        # 从配置文件读取上次选择的头像索引
-        import json
-        saved_idx = 0
-        try:
-            if os.path.exists(config.USER_CONFIG_PATH):
-                with open(config.USER_CONFIG_PATH, "r", encoding="utf-8") as f:
-                    cfg_data = json.load(f)
-                saved_idx = int(cfg_data.get("avatar_index", 0))
-        except Exception:
-            pass
-        self._avatar_index = saved_idx if saved_idx < len(self._avatars) else 0
-
-        self._quote_index = 0
-        self._status_index = 0
-
+        self.setObjectName("ChatSessionPanel")
+        self.setMinimumWidth(200)
+        self._sessions = []
+        self._active_session_id = 0
         self._setup_ui()
-        self._load_avatar()
-        self._start_animations()
-
-    def _scan_avatars(self):
-        """扫描 assets/images/ 下的 rikka_*.png"""
-        img_dir = config.IMAGES_DIR
-        files = []
-        for f in sorted(os.listdir(img_dir)):
-            if f.startswith("rikka_") and f.endswith(".png"):
-                files.append(os.path.join(img_dir, f))
-        return files if files else [config.CHARACTER_IMAGE_PATH]
+        self.refresh_sessions()
 
     def _setup_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 16, 12, 16)
+        session_layout = QVBoxLayout(self)
+        session_layout.setContentsMargins(10, 14, 10, 12)
+        session_layout.setSpacing(8)
+
+        self._search = QLineEdit()
+        self._search.setObjectName("SessionSearch")
+        self._search.setPlaceholderText("搜索对话")
+        self._search.setClearButtonEnabled(True)
+        self._search.textChanged.connect(self._render_sessions)
+        session_layout.addWidget(self._search)
+
+        outline = os.path.join(config.ROOT_DIR, "ui_assets", "03_Icons", "Outline")
+        new_button = QPushButton("新建对话")
+        new_button.setObjectName("NewSessionButton")
+        new_button.setIcon(QIcon(os.path.join(outline, "plus.svg")))
+        new_button.setIconSize(QSize(16, 16))
+        new_button.setFixedHeight(38)
+        new_button.setCursor(Qt.PointingHandCursor)
+        new_button.clicked.connect(self.new_conversation_requested.emit)
+        session_layout.addWidget(new_button)
+
+        filter_row = QHBoxLayout()
+        filter_row.setSpacing(4)
+        for index, text in enumerate(("全部", "置顶", "最近")):
+            chip = QPushButton(text)
+            chip.setObjectName("SessionFilter")
+            chip.setProperty("active", index == 0)
+            chip.setFixedHeight(27)
+            filter_row.addWidget(chip)
+        filter_row.addStretch()
+        session_layout.addLayout(filter_row)
+
+        self._list = QListWidget()
+        self._list.setObjectName("SessionList")
+        self._list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._list.itemClicked.connect(self._select_session)
+        session_layout.addWidget(self._list, 1)
+
+    def refresh_sessions(self, active_session_id=None):
+        if active_session_id is not None:
+            self._active_session_id = int(active_session_id or 0)
+        self._sessions = history.get_sessions(100)
+        self._render_sessions()
+
+    def _render_sessions(self):
+        query = self._search.text().strip().lower()
+        self._list.clear()
+        for session in self._sessions:
+            title = str(session.get("title") or "新会话")
+            if query and query not in title.lower():
+                continue
+            item = QListWidgetItem()
+            item.setData(Qt.UserRole, int(session["id"]))
+            item.setSizeHint(QSize(0, 68))
+            self._list.addItem(item)
+            self._list.setItemWidget(item, SessionItemWidget(session))
+            if int(session["id"]) == self._active_session_id:
+                self._list.setCurrentItem(item)
+
+    def _select_session(self, item):
+        session_id = int(item.data(Qt.UserRole))
+        if session_id > 0 and session_id != self._active_session_id:
+            self._active_session_id = session_id
+            self.session_selected.emit(session_id)
+
+
+class CharacterWidget(QWidget):
+    """兼容容器：导航 + 会话列表并排（旧版布局使用）。"""
+
+    home_requested = pyqtSignal()
+    chat_requested = pyqtSignal()
+    new_conversation_requested = pyqtSignal()
+    session_selected = pyqtSignal(int)
+    history_requested = pyqtSignal()
+    memo_requested = pyqtSignal()
+    summary_requested = pyqtSignal()
+    diary_requested = pyqtSignal()
+    tools_requested = pyqtSignal()
+    settings_requested = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("CharacterPanel")
+        self.setFixedWidth(430)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 8, 0, 8)
         layout.setSpacing(8)
-        layout.setAlignment(Qt.AlignTop)
+        self.nav = NavSidebar(self)
+        self.panel = SessionListPanel(self)
+        layout.addWidget(self.nav)
+        layout.addWidget(self.panel, 1)
 
-        # ── 角色图片（点击切换） ──
-        self.image_label = QLabel()
-        self.image_label.setAlignment(Qt.AlignCenter)
-        self.image_label.setFixedHeight(280)
-        self.image_label.setCursor(Qt.PointingHandCursor)
-        self.image_label.setToolTip("点击切换头像")
-        self.image_label.setStyleSheet("""
-            background-color: #12081e;
-            border: 1px solid #2a1050;
-            border-radius: 12px;
-        """)
-        self.image_label.mousePressEvent = lambda e: self._switch_avatar()
-        layout.addWidget(self.image_label)
+        self.nav.home_requested.connect(self.home_requested.emit)
+        self.nav.chat_requested.connect(self.chat_requested.emit)
+        self.nav.history_requested.connect(self.history_requested.emit)
+        self.nav.memo_requested.connect(self.memo_requested.emit)
+        self.nav.summary_requested.connect(self.summary_requested.emit)
+        self.nav.diary_requested.connect(self.diary_requested.emit)
+        self.nav.tools_requested.connect(self.tools_requested.emit)
+        self.nav.settings_requested.connect(self.settings_requested.emit)
+        self.panel.new_conversation_requested.connect(self.new_conversation_requested.emit)
+        self.panel.session_selected.connect(self.session_selected.emit)
+        self.panel.history_requested.connect(self.history_requested.emit)
 
-        # ── 头像计数器 ──
-        self._avatar_counter = QLabel()
-        self._avatar_counter.setAlignment(Qt.AlignCenter)
-        self._avatar_counter.setStyleSheet("color: #5a3a7a; font-size: 10px; padding-bottom: 2px;")
-        layout.addWidget(self._avatar_counter)
+    def set_active_section(self, section):
+        self.nav.set_active_section(section)
 
-        # ── 角色名称 ──
-        name_label = QLabel("小鸟游六花")
-        name_label.setObjectName("CharacterName")
-        name_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(name_label)
-
-        # ── 称号 ──
-        title_label = QLabel("邪王真眼使用者")
-        title_label.setObjectName("CharacterTitle")
-        title_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(title_label)
-
-        # ── 副标题 ──
-        sub_label = QLabel("Far East Magic Nap Society")
-        sub_label.setObjectName("CharacterSubtitle")
-        sub_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(sub_label)
-
-        # ── 分隔线 ──
-        separator = QFrame()
-        separator.setFrameShape(QFrame.HLine)
-        separator.setStyleSheet("border: none; border-top: 1px solid #2a1050;")
-        separator.setFixedHeight(1)
-        layout.addWidget(separator)
-
-        # ── 状态标签 ──
-        self.status_label = QLabel(self.STATUS_TEXTS[0])
-        self.status_label.setObjectName("CharacterQuote")
-        self.status_label.setAlignment(Qt.AlignCenter)
-        self.status_label.setWordWrap(True)
-        layout.addWidget(self.status_label)
-
-        # ── 名言引用 ──
-        separator2 = QFrame()
-        separator2.setFrameShape(QFrame.HLine)
-        separator2.setStyleSheet("border: none; border-top: 1px solid #2a1050;")
-        separator2.setFixedHeight(1)
-        layout.addWidget(separator2)
-
-        quote_title = QLabel("💬 六花语録")
-        quote_title.setStyleSheet("color: #5a3a7a; font-size: 10px; padding-top: 4px;")
-        quote_title.setAlignment(Qt.AlignCenter)
-        layout.addWidget(quote_title)
-
-        self.quote_label = QLabel(self.QUOTES[0])
-        self.quote_label.setStyleSheet("""
-            color: #c084fc;
-            font-size: 11px;
-            font-style: italic;
-            padding: 6px 8px;
-            background-color: transparent;
-            border: none;
-        """)
-        self.quote_label.setAlignment(Qt.AlignCenter)
-        self.quote_label.setWordWrap(True)
-        layout.addWidget(self.quote_label)
-
-        # ── 填充 ──
-        layout.addStretch()
-
-    def _start_animations(self):
-        """定时切换状态和语录"""
-        self._status_timer = QTimer(self)
-        self._status_timer.timeout.connect(self._cycle_status)
-        self._status_timer.start(5000)
-
-        self._quote_timer = QTimer(self)
-        self._quote_timer.timeout.connect(self._cycle_quote)
-        self._quote_timer.start(8000)
-
-    def _cycle_status(self):
-        self._status_index = (self._status_index + 1) % len(self.STATUS_TEXTS)
-        self.status_label.setText(self.STATUS_TEXTS[self._status_index])
-
-    def _cycle_quote(self):
-        self._quote_index = (self._quote_index + 1) % len(self.QUOTES)
-        self.quote_label.setText(self.QUOTES[self._quote_index])
-
-    def update_status(self, text: str):
-        """外部更新状态显示"""
-        self.status_label.setText(text)
-
-    def update_emotion(self, emotion: str):
-        """外部更新情绪状态"""
-        emoji_map = {
-            "happy": "😊", "angry": "😠", "sad": "😢",
-            "surprise": "😲", "tsundere": "😤", "chuunibyou": "✨",
-        }
-        emoji = emoji_map.get(emotion, "✨")
-        self.status_label.setText(f"邪王真眼 · {emotion} {emoji}")
-
-    def _load_avatar(self):
-        """加载当前索引的头像"""
-        if not self._avatars:
-            return
-        path = self._avatars[self._avatar_index]
-        pixmap = QPixmap(path)
-        if pixmap and not pixmap.isNull():
-            scaled = pixmap.scaled(
-                196, 276, Qt.KeepAspectRatio, Qt.SmoothTransformation,
-            )
-            self.image_label.setPixmap(scaled)
-        else:
-            self.image_label.setText("🦋\n六花")
-        total = len(self._avatars)
-        self._avatar_counter.setText(f"{self._avatar_index + 1} / {total}")
-
-    def _switch_avatar(self):
-        """点击切换到下一张头像"""
-        if not self._avatars:
-            return
-        self._avatar_index = (self._avatar_index + 1) % len(self._avatars)
-        self._load_avatar()
-        config.save_user_config({"avatar_index": self._avatar_index})
+    def refresh_sessions(self, active_session_id=None):
+        self.panel.refresh_sessions(active_session_id)

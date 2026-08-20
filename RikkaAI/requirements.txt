@@ -1,8 +1,11 @@
 PyQt5>=5.15
 PyQt5-sip>=12.13
+PyQtWebEngine>=5.15
 Pillow>=10.0
 requests>=2.31
 openai>=1.0
 duckduckgo_search>=6.0
 googlesearch-python>=1.0
 psutil>=5.0
+sherpa-onnx>=1.11
+websocket-client>=1.0

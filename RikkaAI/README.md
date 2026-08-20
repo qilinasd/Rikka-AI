@@ -89,26 +89,29 @@ RikkaAI/
 │
 ├── brain/                   # 🧠 AI 核心
 │   ├── agent.py             # 对话核心（流式输出 + 工具循环）
-│   ├── tools.py             # Function Calling 工具集（28个工具）
+│   ├── tools.py             # Function Calling 工具集（46个工具）
 │   ├── emotion.py           # 情感状态系统
-│   ├── memory.py            # 文件记忆系统
-│   ├── rag_memory.py        # RAG 全文检索记忆
+│   ├── memory_vault.py      # 记忆库（SQLite + FTS，两级分类）
+│   ├── memory_summary.py    # 记忆总结
 │   ├── graph_memory.py      # 知识图谱记忆（实体-关系）
 │   ├── history.py           # 对话历史（SQLite）
 │   ├── diary.py             # 日记系统
-│   ├── notes.py             # 备忘本系统
 │   ├── context_compressor.py # 长对话智能压缩
-│   └── surf.py              # 冲浪系统（B站搜索）
+│   ├── scribe.py            # 记录器
+│   ├── surf.py              # 冲浪系统（B站搜索）
+│   ├── voice.py             # 语音系统
+│   └── qq_bridge.py         # QQ 桥接
 │
 ├── gui/                     # 🎨 图形界面
 │   ├── chat_widget.py       # 聊天气泡组件
 │   ├── character_widget.py  # 角色立绘面板
 │   ├── input_panel.py       # 输入面板
-│   ├── settings_dialog.py   # 设置对话框
+│   ├── settings_widgets.py  # 设置控件（预设编辑等）
+│   ├── theme_manager.py     # 主题/背景运行时应用
 │   ├── history_dialog.py    # 历史会话
-│   ├── memory_dialog.py     # 记忆浏览
-│   ├── diary_dialog.py      # 日记浏览
-│   ├── notes_dialog.py      # 备忘本
+│   ├── dashboard_pages.py   # 仪表盘（历史/记忆/设置）
+│   ├── memory_detail_dialog.py # 记忆详情
+│   ├── memo_dialog.py       # 备忘录
 │   ├── tools_dialog.py      # 工具面板
 │   └── ...                  # 其他对话框
 │
@@ -121,11 +124,9 @@ RikkaAI/
 │   ├── images/              #   头像、立绘、背景
 │   └── styles/              #   QSS 主题样式
 │
-├── memories/                # 📦 记忆文件存储
-├── diaries/                 # 📖 日记存档
 ├── summaries/               # 📋 对话摘要
 ├── conversations/           # 💾 长对话存档
-└── memory_data/             # 🗄 SQLite 数据库（历史、RAG、图谱）
+└── memory_data/             # 🗄 SQLite 数据库（历史、记忆、图谱）
 ```
 
 ---
@@ -249,7 +250,7 @@ RikkaAI/
 `screenshot` · `send_image` · `describe_image` · `ocr_image` · `game_guide`（邪王真眼·攻略术）
 
 **记忆与备忘**
-`read_memories` · `save_memory` · `read_notes` · `add_note` · `read_summaries`
+`read_memories` · `save_memory` · `read_summaries` · `write_to_memo`
 
 **网络搜索**
 `web_search` · `bilibili_search`

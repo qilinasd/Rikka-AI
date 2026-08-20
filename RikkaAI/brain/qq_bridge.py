@@ -3,7 +3,6 @@ RikkaAI - QQ 桥接模块
 通过 NapCat (OneBot v11) WebSocket 连接 QQ
 """
 import json
-import os
 import threading
 import time
 import logging
@@ -173,9 +172,49 @@ class NapCatBridge:
             logger.error(f"发送群图片失败: {e}")
             return False
 
+    def send_voice(self, user_id: int, audio_path: str) -> bool:
+        """发送语音到私聊（NapCat 会自动转成 QQ 的 Silk 格式）"""
+        try:
+            import os as _os
+            if not _os.path.exists(audio_path):
+                logger.error(f"语音文件不存在: {audio_path}")
+                return False
+            msg_array = [{"type": "record", "data": {"file": audio_path}}]
+            result = self._api_call("send_private_msg", {
+                "user_id": user_id, "message": msg_array
+            })
+            return result is not None
+        except Exception as e:
+            logger.error(f"发送语音失败: {e}")
+            return False
+
+    def send_group_voice(self, group_id: int, audio_path: str) -> bool:
+        """发送语音到群聊（NapCat 会自动转成 QQ 的 Silk 格式）"""
+        try:
+            import os as _os
+            if not _os.path.exists(audio_path):
+                logger.error(f"语音文件不存在: {audio_path}")
+                return False
+            msg_array = [{"type": "record", "data": {"file": audio_path}}]
+            result = self._api_call("send_group_msg", {
+                "group_id": group_id, "message": msg_array
+            })
+            return result is not None
+        except Exception as e:
+            logger.error(f"发送群语音失败: {e}")
+            return False
+
     def get_login_info(self) -> dict:
         """获取机器人自己的 QQ 信息"""
         return self._api_call("get_login_info") or {}
+
+    def get_friend_list(self) -> list:
+        """获取好友列表（OneBot v11 get_friend_list）"""
+        return self._api_call("get_friend_list", {}) or []
+
+    def get_group_list(self) -> list:
+        """获取群列表（OneBot v11 get_group_list）"""
+        return self._api_call("get_group_list", {}) or []
 
     # ── 内部：WebSocket 连接管理 ─────────────────────────────
 
@@ -234,7 +273,12 @@ class NapCatBridge:
             raw_msg = str(data.get("raw_message", ""))
             msg_type = data.get("message_type", "private")
 
+            logger.info(
+                f"[WS] 消息事件 user={user_id} group={group_id} type={msg_type} "
+                f"self_qq={self._self_qq} msg={raw_msg[:40]!r}"
+            )
             if user_id == self._self_qq:
+                logger.info(f"[WS] 过滤自己发的消息 user={user_id}")
                 return
 
             if _on_message:

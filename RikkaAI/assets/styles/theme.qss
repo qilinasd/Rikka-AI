@@ -1,248 +1,588 @@
-/* ═══════════════════════════════════════════
-   RikkaAI — 邪王真眼 暗紫主题
-   小鸟游六花 · 自定义QSS样式表
-   ═══════════════════════════════════════════ */
-
-/* ── 全局 ── */
-QMainWindow {
-    background-color: #0d0a14;
+QMainWindow,
+#WindowRoot {
+    background:qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 #f8f7fc, stop:0.48 #fffaf9, stop:1 #f1f7fb);
 }
 
 QWidget {
-    background-color: transparent;
-    color: #d4c0e0;
-    font-family: "Microsoft YaHei", "微软雅黑", sans-serif;
+    color:#30354f;
+    font-family:"Source Han Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+    font-size:13px;
+    letter-spacing:0;
+    selection-background-color:#8d73e6;
+    selection-color:#ffffff;
 }
 
-/* ── 标题栏 ── */
+QLabel,
+QScrollArea,
+QScrollArea > QWidget,
+QScrollArea > QWidget > QWidget {
+    background:transparent;
+    border:none;
+}
+
+QToolTip {
+    color:#ffffff;
+    background:#343852;
+    border:1px solid #555b7e;
+    border-radius:5px;
+    padding:6px 9px;
+}
+
 #TitleBar {
-    background-color: #120b1a;
-    border-bottom: 1px solid #2a1050;
+    background:rgba(255,255,255,0.86);
+    border:1px solid rgba(218,214,234,0.94);
+    border-radius:8px;
+}
+
+#TitleLogo {
+    background:#ffffff;
+    border:1px solid #ded8ef;
+    border-radius:19px;
 }
 
 #TitleText {
-    color: #c084fc;
-    font-size: 14px;
-    font-weight: bold;
-    padding-left: 6px;
+    color:#59458f;
+    font-family:"Segoe UI Semibold", "Microsoft YaHei UI", sans-serif;
+    font-size:20px;
+    font-weight:700;
+}
+
+#TitleCaption {
+    color:#8b879e;
+    font-size:10px;
 }
 
 #TitleSub {
-    color: #5a3a7a;
-    font-size: 11px;
-    padding-left: 4px;
+    color:#9a91b2;
+    font-size:10px;
+    padding:0 6px;
 }
 
-/* ── 状态栏 ── */
-#StatusBar {
-    background-color: #0f0a18;
-    border-top: 1px solid #1f0d38;
+#TitleActionButton,
+#TitleWindowButton,
+#QQButton,
+#StopButton,
+#InputToolButton {
+    min-width:34px;
+    max-width:34px;
+    min-height:34px;
+    max-height:34px;
+    padding:0;
+    background:#ffffff;
+    border:1px solid #dfd9ef;
+    border-radius:8px;
 }
 
-#StatusActive {
-    color: #ff69b4;
-    font-size: 14px;
+#TitleActionButton:hover,
+#TitleWindowButton:hover,
+#QQButton:hover,
+#InputToolButton:hover {
+    background:#f6f2ff;
+    border-color:#bdaee8;
 }
 
-/* ── 分割器 ── */
-QSplitter::handle {
-    background-color: #2a1050;
-    width: 1px;
+#TitleActionButton:pressed,
+#TitleWindowButton:pressed,
+#QQButton:pressed,
+#InputToolButton:pressed {
+    background:#ede7fb;
 }
 
-/* ── 角色面板 ── */
-#CharacterWidget {
-    background-color: #0f0818;
-    border-right: 1px solid #1f0d38;
+#InputToolButton:disabled {
+    background:#f5f4f8;
+    border-color:#e8e5ef;
+}
+
+#StopButton {
+    background:#fff4f6;
+    border-color:#efcbd4;
+}
+
+#StopButton:hover {
+    background:#ffe8ed;
+    border-color:#df9fb0;
+}
+
+#TitleWindowButton {
+    min-width:30px;
+    max-width:30px;
+    padding:0;
+    color:#756d80;
+    font-family:"Segoe UI Symbol";
+    font-size:14px;
+}
+
+#TitleWindowButton:hover {
+    color:#6249a5;
+}
+
+#QQButton[state="connecting"] {
+    background:#fff8e8;
+    border-color:#ead39d;
+}
+
+#QQButton[state="online"] {
+    background:#ecf9f2;
+    border-color:#acd9bf;
+}
+
+#MainShell,
+#MainSplitter,
+#RightPanel,
+#CharacterPanel,
+#InputPanel,
+#WorkspaceStack,
+#ChatPage {
+    background:transparent;
+    border:none;
+}
+
+#CharacterHero {
+    background:#ffffff;
+    border:1px solid rgba(215,209,231,0.96);
+    border-radius:8px;
+}
+
+#CharacterHeroOverlay {
+    background:qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 rgba(255,255,255,0.12),
+        stop:0.42 rgba(255,255,255,0.18),
+        stop:0.72 rgba(255,251,253,0.84),
+        stop:1 rgba(255,255,255,0.96));
+    border:1px solid rgba(255,255,255,0.54);
+    border-radius:8px;
+}
+
+#SidebarBrandMark {
+    min-width:20px;
+    max-width:20px;
+    min-height:20px;
+    max-height:20px;
+}
+
+#SidebarBrandText {
+    color:#ffffff;
+    font-family:"Segoe UI Semibold", "Microsoft YaHei UI", sans-serif;
+    font-size:17px;
+    font-weight:700;
+}
+
+#CharacterAvatarRing {
+    background:qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 rgba(255,255,255,0.98), stop:0.55 rgba(255,226,237,0.97), stop:1 rgba(215,205,250,0.98));
+    border:2px solid rgba(255,255,255,0.96);
+    border-radius:52px;
+}
+
+#CharacterAvatar {
+    background:transparent;
+    border:none;
 }
 
 #CharacterName {
-    color: #e8d0ff;
-    font-size: 18px;
-    font-weight: bold;
+    color:#34334b;
+    font-size:22px;
+    font-weight:700;
 }
 
 #CharacterTitle {
-    color: #c084fc;
-    font-size: 13px;
-    font-weight: bold;
+    color:#7155b8;
+    font-size:12px;
+    font-weight:600;
 }
 
 #CharacterSubtitle {
-    color: #7a5aaa;
-    font-size: 11px;
+    color:#918b9f;
+    font-size:9px;
 }
 
-#CharacterQuote {
-    color: #ff69b4;
-    font-size: 12px;
-    font-style: italic;
-    padding: 8px 12px;
-    background-color: #1a0d2e;
-    border: 1px solid #3a1a6e;
-    border-radius: 8px;
+#CharacterStatusChip,
+#ChatPrivacyChip,
+#IntroChip,
+#InfoChip {
+    min-height:26px;
+    padding:0 10px;
+    background:rgba(255,255,255,0.88);
+    border:1px solid #ddd4ef;
+    border-radius:8px;
+    color:#6850a8;
+    font-size:10px;
+    font-weight:600;
 }
 
-/* ── 聊天气泡 ── */
+#CharacterStatusChip {
+    color:#298b61;
+    border-color:#b9ddcc;
+}
+
+#SidebarSectionTitle {
+    color:#77718a;
+    font-size:10px;
+    font-weight:700;
+    padding:3px 8px;
+}
+
+#SidebarNavButton {
+    background:rgba(255,255,255,0.72);
+    border:1px solid transparent;
+    border-radius:8px;
+    text-align:left;
+    padding:0 13px;
+    color:#55566d;
+    font-size:12px;
+}
+
+#SidebarNavButton:hover {
+    background:#ffffff;
+    border-color:#dcd5eb;
+    color:#6249a5;
+}
+
+#SidebarNavButton[active="true"] {
+    background:qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 #f8eff8, stop:1 #f0effc);
+    border-color:#d8cdea;
+    color:#6249a5;
+    font-weight:700;
+}
+
+#SidebarQuickCard {
+    background:rgba(255,255,255,0.74);
+    border:1px solid #e1ddea;
+    border-radius:8px;
+}
+
+#SidebarSummary {
+    color:#77758a;
+    font-size:10px;
+}
+
+/* 聊天界面 - 玻璃态设计 */
 #ChatWidget {
-    background-color: #0d0a14;
+    background:transparent;
+    border:none;
 }
 
-/* 用户消息气泡 */
+#ChatScrollArea,
+#ChatScrollContent {
+    background:transparent;
+    border:none;
+}
+
+#ChatHeader {
+    background:qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 rgba(255,255,255,0.12),
+        stop:0.58 rgba(252,248,255,0.14),
+        stop:1 rgba(255,244,248,0.12));
+    border:none;
+    border-bottom:1px solid rgba(255,255,255,0.18);
+    border-top-left-radius:16px;
+    border-top-right-radius:16px;
+}
+
+#ChatHeaderTitle {
+    color:#ffffff;
+    font-size:20px;
+    font-weight:700;
+}
+
+#ChatHeaderSubtitle {
+    color:rgba(255,255,255,0.85);
+    font-size:11px;
+}
+
+#SakuraDecoration {
+    background:transparent;
+    border:none;
+}
+
+#ChatPrivacyChip {
+    min-height:28px;
+    padding:0 12px;
+    background:rgba(255,255,255,0.16);
+    border:1px solid rgba(255,255,255,0.24);
+    border-radius:10px;
+    color:#ffffff;
+    font-size:10px;
+    font-weight:600;
+}
+
+#ConversationIntroCard {
+    background:qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 rgba(255,247,250,0.22),
+        stop:0.55 rgba(248,244,255,0.24),
+        stop:1 rgba(241,249,253,0.20));
+    border:1px solid rgba(255,255,255,0.28);
+    border-top:1px solid rgba(255,255,255,0.4);
+    border-radius:14px;
+}
+
+#ConversationIntroTitle {
+    color:#ffffff;
+    font-size:20px;
+    font-weight:700;
+}
+
+#ConversationIntroBody {
+    color:rgba(255,255,255,0.92);
+    font-size:13px;
+}
+
+#IntroChip {
+    min-height:28px;
+    padding:0 11px;
+    background:rgba(255,255,255,0.18);
+    border:1px solid rgba(255,255,255,0.3);
+    border-radius:9px;
+    color:rgba(255,255,255,0.95);
+    font-size:10px;
+    font-weight:600;
+}
+
+#MessageRow {
+    background:transparent;
+    border:none;
+}
+
+#AIBubble,
 #UserBubble {
-    background-color: #1e1040;
-    border: 1px solid #3a1a6e;
-    border-radius: 12px;
-    border-top-right-radius: 2px;
-    padding: 10px 14px;
-    color: #ffd700;
-    font-size: 13px;
+    border-radius:12px;
 }
 
-/* AI消息气泡 */
-#AiBubble {
-    background-color: #140a20;
-    border: 1px solid #2a1050;
-    border-radius: 12px;
-    border-top-left-radius: 2px;
-    padding: 10px 14px;
-    color: #ffd700;
-    font-size: 13px;
+#AIBubble {
+    background:rgba(255,255,255,0.14);
+    border:1px solid rgba(255,255,255,0.22);
+    border-top:1px solid rgba(255,255,255,0.35);
 }
 
-/* 消息标签 */
-#MsgLabel {
-    color: #7a5aaa;
-    font-size: 11px;
-    font-weight: bold;
+#UserBubble {
+    background:qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 rgba(253,240,245,0.18),
+        stop:1 rgba(240,237,255,0.18));
+    border:1px solid rgba(218,205,234,0.35);
+    border-top:1px solid rgba(255,255,255,0.4);
 }
 
-#MsgTime {
-    color: #3a2a4a;
-    font-size: 10px;
+#AIBubbleMeta,
+#UserBubbleMeta {
+    color:rgba(255,255,255,0.75);
+    font-size:10px;
+    font-weight:600;
 }
 
-/* ── 输入面板 ── */
-#InputPanel {
-    background-color: #0f0a18;
-    border-top: 1px solid #1f0d38;
-    padding: 8px 12px;
+#UserBubbleMeta {
+    color:rgba(208,178,255,0.95);
+}
+
+#AIBubbleText,
+#UserBubbleText {
+    background:transparent;
+    border:none;
+    color:rgba(255,255,255,0.98);
+    font-size:14px;
+    line-height:1.6;
+}
+
+#BubbleAvatar {
+    min-width:42px;
+    max-width:42px;
+    min-height:42px;
+    max-height:42px;
+    background:transparent;
+    border:none;
+}
+
+#BubbleImage {
+    background:rgba(255,255,255,0.12);
+    border:1px solid rgba(255,255,255,0.2);
+    border-radius:10px;
+    padding:5px;
+}
+
+#InputComposer {
+    background:rgba(255,255,255,0.92);
+    border:1px solid #dcd6e8;
+    border-radius:8px;
+}
+
+#InputField,
+QLineEdit,
+QTextEdit,
+QComboBox {
+    background:#fbfafc;
+    border:1px solid #e1dce8;
+    border-radius:8px;
+    padding:8px 12px;
+    color:#35384f;
 }
 
 #InputField {
-    background-color: #1a0d2e;
-    border: 1px solid #2a1050;
-    border-radius: 16px;
-    padding: 8px 16px;
-    color: #ffd700;
-    font-size: 13px;
-    min-height: 20px;
-    max-height: 80px;
-    selection-background-color: #3a1a6e;
+    font-size:13px;
 }
 
-#InputField:focus {
-    border: 1px solid #7a3aba;
-    background-color: #1f0f38;
+#InputField:focus,
+QLineEdit:focus,
+QTextEdit:focus,
+QComboBox:focus {
+    background:#ffffff;
+    border-color:#a997d8;
 }
 
-#InputField::placeholder {
-    color: #3a2a4a;
-}
-
-/* 发送按钮 */
 #SendButton {
-    background-color: #6a2aba;
-    border: 1px solid #8a4ada;
-    border-radius: 18px;
-    min-width: 80px;
-    max-width: 80px;
-    font-size: 13px;
-    font-weight: bold;
-    color: #ffd700;
-    padding: 4px 8px;
+    min-width:94px;
+    background:qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 #e88eae, stop:0.52 #a684e4, stop:1 #6e69d9);
+    border:none;
+    border-radius:8px;
+    color:#ffffff;
+    font-size:12px;
+    font-weight:700;
+    padding:0 18px;
 }
 
 #SendButton:hover {
-    background-color: #8a4ada;
-    border: 1px solid #a06aee;
-    color: #ffd700;
+    background:qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 #ee9ab7, stop:0.52 #af90ea, stop:1 #7b76df);
 }
 
 #SendButton:pressed {
-    background-color: #4a1a8a;
+    background:#7868c9;
 }
 
-/* 工具按钮（语音等） */
-#ToolButton {
-    background-color: transparent;
-    border: 1px solid #2a1050;
-    border-radius: 16px;
-    min-width: 32px;
-    min-height: 32px;
-    max-width: 32px;
-    max-height: 32px;
-    font-size: 14px;
-    color: #5a3a7a;
+#SendButton:disabled {
+    background:#d9d4e3;
+    color:#f7f5fa;
 }
 
-#ToolButton:hover {
-    background-color: #2d1b4e;
-    border-color: #9b59b6;
-    color: #ffd700;
+#StatusBar {
+    background:rgba(255,255,255,0.58);
+    border:none;
+    border-top:1px solid #e3dfea;
 }
 
-/* ── 滚动条 ── */
+#StatusDot {
+    min-width:10px;
+    max-width:10px;
+    min-height:10px;
+    max-height:10px;
+    border-radius:5px;
+}
+
+#StatusDot[state="online"] { background:#45b77b; }
+#StatusDot[state="away"] { background:#dfa945; }
+#StatusDot[state="offline"] { background:#a496c5; }
+
+#StatusText {
+    color:#65577f;
+    font-size:10px;
+    font-weight:600;
+}
+
+#StatusMeta {
+    color:#9691a2;
+    font-size:9px;
+}
+
+QDialog,
+QListWidget,
+QComboBox QAbstractItemView {
+    background:#fcfbfe;
+    border:1px solid #ddd8e7;
+    border-radius:8px;
+}
+
+QPushButton {
+    background:#ffffff;
+    border:1px solid #ded9e7;
+    border-radius:8px;
+    color:#55556c;
+    padding:7px 11px;
+}
+
+QPushButton:hover {
+    background:#f7f3fd;
+    border-color:#bbaee0;
+    color:#6249a5;
+}
+
+QListWidget::item {
+    padding:9px 12px;
+    border-radius:6px;
+    color:#57586e;
+}
+
+QListWidget::item:selected {
+    background:#eee9fa;
+    color:#5c4599;
+}
+
+QComboBox::drop-down {
+    border:none;
+    width:24px;
+}
+
+QComboBox QAbstractItemView {
+    selection-background-color:#eee9fa;
+    selection-color:#5c4599;
+}
+
 QScrollBar:vertical {
-    background-color: #0d0a14;
-    width: 6px;
-    border: none;
+    background:transparent;
+    width:7px;
+    border:none;
+    margin:5px 1px;
 }
 
 QScrollBar::handle:vertical {
-    background-color: #2a1050;
-    border-radius: 3px;
-    min-height: 30px;
+    background:#cfc7df;
+    border-radius:3px;
+    min-height:36px;
 }
 
-QScrollBar::handle:vertical:hover {
-    background-color: #4a2080;
-}
+QScrollBar::handle:vertical:hover { background:#b3a6ce; }
 
 QScrollBar::add-line:vertical,
-QScrollBar::sub-line:vertical {
-    height: 0;
+QScrollBar::sub-line:vertical,
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+    background:transparent;
+    border:none;
 }
 
-QScrollBar:horizontal {
-    background-color: #0d0a14;
-    height: 6px;
-    border: none;
+QCheckBox {
+    color:#55566d;
+    spacing:8px;
 }
 
-QScrollBar::handle:horizontal {
-    background-color: #2a1050;
-    border-radius: 3px;
-    min-width: 30px;
+QCheckBox::indicator {
+    width:16px;
+    height:16px;
+    border-radius:4px;
+    border:1px solid #cec5df;
+    background:#ffffff;
 }
 
-QScrollBar::add-line:horizontal,
-QScrollBar::sub-line:horizontal {
-    width: 0;
+QCheckBox::indicator:checked {
+    background:#8d73e6;
+    border-color:#8d73e6;
 }
 
-/* ── 对话框 ── */
-QDialog {
-    background-color: #0f0a18;
-    border: 1px solid #2a1050;
+QSlider::groove:horizontal {
+    height:5px;
+    background:#e8e3ef;
+    border-radius:2px;
 }
 
-/* ── 工具提示 ── */
-QToolTip {
-    background-color: #1a0d2e;
-    border: 1px solid #5a2a9e;
-    border-radius: 4px;
-    color: #ffd700;
-    font-size: 12px;
-    padding: 4px 8px;
+QSlider::handle:horizontal {
+    background:#8d73e6;
+    width:17px;
+    height:17px;
+    margin:-6px 0;
+    border-radius:8px;
+}
+
+QSlider::sub-page:horizontal {
+    background:#b7a5e7;
+    border-radius:2px;
 }
