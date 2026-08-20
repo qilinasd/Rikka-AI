@@ -39,25 +39,55 @@ BASE_TOOL_NAMES = {
     "read_summaries", "save_memory", "read_memories", "manage_user_state", "correct_memory",
     "set_proactive_timer", "set_follow_up", "cancel_follow_up",
     "write_to_memo", "append_self_discovery", "update_diary", "write_diary",
+    # ══ 🆕 高频必需工具（Phase 1.2）══
+    "screenshot",       # 视觉：关键词容易漏匹配
+    "send_image",       # 视觉：截图后必然用到
+    "web_search",       # 搜索：最高频工具
+    "argo_search",      # 搜索：web_search 的增强版
+    "get_weather",      # 天气：关键词覆盖不全
+    "describe_image",   # 识图：用户发图时必需
 }
 
 # 分组工具：按用户消息关键词动态注入（省 token、聚焦能力）
 TOOL_GROUPS = {
     "visual": {
         "names": ["screenshot", "send_image", "describe_image", "ocr_image", "game_guide"],
-        "keywords": ["截图", "屏幕", "看看", "图片", "画面", "识别", "OCR", "攻略", "游戏"],
+        "keywords": [
+            # 截图类（新增 7 个变体）
+            "截图", "屏幕", "看看", "看", "看下", "看一下", "瞅瞅", "瞧瞧",
+            # 图片类
+            "图片", "画面", "显示", "识别", "OCR", "攻略", "游戏",
+        ],
     },
     "image_search": {
         "names": ["search_images", "search_images_smart", "download_image", "generate_image"],
-        "keywords": ["搜图", "找图", "壁纸", "画", "生成图", "图片", "照片", "头像", "表情包"],
+        "keywords": [
+            # 找图类（新增 4 个变体）
+            "搜图", "找图", "找张图", "搜张图", "壁纸",
+            # 画图类（新增 3 个变体）
+            "画", "画图", "生成图", "画一张", "帮我画", "生成图片",
+            "图片", "照片", "头像", "表情包",
+        ],
     },
     "web_platform": {
         "names": ["web_search", "argo_search", "bilibili_search", "read_url", "get_weather",
                   "search_news", "search_wiki", "read_rss", "youtube_transcript",
                   "github_repo", "read_twitter", "browser_task"],
-        "keywords": ["搜索", "查一下", "查查", "新闻", "天气", "百科", "维基", "B站", "bilibili",
-                     "YouTube", "油管", "GitHub", "仓库", "RSS", "Twitter", "推特", "网站", "网页", "浏览器",
-                     "股价", "行情", "基金", "股票", "油价", "金价", "学术", "论文", "调研", "综述", "股价"],
+        "keywords": [
+            # 搜索类（新增 10 个变体）
+            "搜索", "搜", "查", "查一下", "查查", "查询",
+            "找", "找一下", "帮我找", "搜一下", "帮我搜", "帮我查",
+            # 天气类（新增 7 个变体）
+            "天气", "温度", "气温", "冷不冷", "热不热", "下雨", "下雪", "现在",
+            # 平台类
+            "新闻", "百科", "维基", "B站", "bilibili",
+            "YouTube", "油管", "GitHub", "仓库", "RSS", "Twitter", "推特",
+            "网站", "网页", "浏览器",
+            # 金融类
+            "股价", "行情", "基金", "股票", "油价", "金价",
+            # 学术类
+            "学术", "论文", "调研", "综述",
+        ],
     },
     "qq": {
         "names": ["send_qq_message", "send_qq_image", "query_qq_contacts"],
@@ -131,7 +161,7 @@ class AgentCore:
     # ------------------------------------------------------------------ #
 
     def _build_base_prompt(self) -> str:
-        """从 persona/ 三文件 + 上轮摘要 组装基础 prompt"""
+        """从 persona/ 文件 + 上轮摘要 组装基础 prompt"""
         parts = []
         memory_enabled = cfg.get_chat_settings()["chat_memory_enabled"]
 
@@ -147,6 +177,14 @@ class AgentCore:
         rules_path = os.path.join(cfg.ROOT_DIR, "persona", "system_rules.md")
         if os.path.exists(rules_path):
             with open(rules_path, "r", encoding="utf-8") as f:
+                content = f.read().strip()
+                if content:
+                    parts.append(content)
+
+        # 3. 工具使用指南（强化工具调用能力）
+        tool_guide_path = os.path.join(cfg.ROOT_DIR, "persona", "tool_guidelines.md")
+        if os.path.exists(tool_guide_path):
+            with open(tool_guide_path, "r", encoding="utf-8") as f:
                 content = f.read().strip()
                 if content:
                     parts.append(content)
