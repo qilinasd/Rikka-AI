@@ -58,11 +58,7 @@ graphify-out/
 *简历*.docx
 *简历*.pdf
 
-# 六花图片资源
-RikkaAI/assets/images/rikka_*.png
-RikkaAI/assets/images/avatar.png
-RikkaAI/assets/images/background.png
-RikkaAI/assets/images/character_full.png
+ 
 
 # 项目根目录图片（保留展示用图片）
 /*.png
