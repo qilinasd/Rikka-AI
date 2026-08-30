@@ -1,330 +1,192 @@
-# 🦋 小鸟游六花 AI — RikkaAI
+<div align="center">
 
-> 「寄宿在我左眼的邪王真眼啊…让世界见识你的力量吧！」
+# 🦋 RikkaAI · 邪王真眼 AI 伙伴
 
-**RikkaAI** 是一款桌面 AI 伙伴应用，以《中二病也要谈恋爱》中的小鸟游六花为角色原型。它不只是聊天机器人——它有自己的性格、情感、记忆和**主动性**。
+> **「寄宿在我左眼的邪王真眼啊……让世界见识你的力量吧！」**
+>
+> 一个拥有**记忆、情感、主动性、人格与声音**的 Windows 桌面 AI 伴侣，以《中二病也要谈恋爱》的 **小鸟游六花** 为原型。
+
+  <img src="https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white" alt="Python"/>
+  <img src="https://img.shields.io/badge/GUI-PyQt5-41CD52?logo=qt&logoColor=white" alt="GUI"/>
+  <img src="https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D6?logo=windows&logoColor=white" alt="Platform"/>
+  <img src="https://img.shields.io/badge/LLM-DeepSeek-4A90D9?logo=openai&logoColor=white" alt="LLM"/>
+  <img src="https://img.shields.io/badge/%E8%AE%B0%E5%BF%86-SQLite%20%2B%20RAG-blue" alt="Memory"/>
+  <img src="https://img.shields.io/badge/%E6%83%85%E6%84%9F-%E4%B8%89%E8%BD%B4%E7%8A%B6%E6%80%81-ff69b4" alt="Emotion"/>
+  <img src="https://img.shields.io/badge/%E8%AF%AD%E9%9F%B3-GPT--SoVITS-a855f7" alt="Voice"/>
+  <img src="https://img.shields.io/badge/QQ-NapCat-27b3f7" alt="QQ"/>
+  <img src="https://img.shields.io/badge/Search-SearXNG-orange" alt="Search"/>
+  <img src="https://img.shields.io/badge/License-MIT-green" alt="License"/>
+  <img src="https://img.shields.io/badge/version-v0.4-informational" alt="Version"/>
+
+</div>
+
+<!-- 🦋 六花立绘 · 邪王真眼（置顶首图） -->
+<p align="center">
+  <img src="../docs/preview/rikka.png" alt="小鸟游六花 · 邪王真眼" width="80%"/>
+  <br/><sub>👆 小鸟游六花 · 寄宿着「邪王真眼」</sub>
+</p>
 
 ---
 
-## ✨ 功能亮点
+## 💖 关于六花
 
-| 特性 | 说明 |
-|------|------|
-| 🧠 **三层记忆** | 文件记忆 + RAG 全文检索 + 知识图谱，记得住几周前的对话 |
-| 💬 **流式对话** | 实时打字效果，像真人在说话 |
-| 🎭 **情感系统** | 六花有自己的心情值、好感度、精力值，影响回复风格 |
-| 🔗 **链式主动关心** | AI **自主决定**什么时候找你，白天/深夜不同策略 |
-| 🔄 **临时回访** | 你说"累了"→15分钟后回访；说"去开会"→1小时后问问 |
-| 📝 **自我演化** | 六花会记录关于自己的新发现，人设慢慢成长 |
-| 📖 **日记系统** | 每天自动记录对话摘要 |
-| 📸 **摸鱼彩蛋** | 30% 概率偷看屏幕，聊你正在看的内容 |
-| 🧩 **Function Calling** | 截图、搜索、读文件、查系统状态……二十多种工具 |
-| 🎨 **角色立绘** | 8 套可切换头像，暗色哥特 UI，带中二语录轮播 |
+六花来自《中二病也要谈恋爱》，是寄宿着「邪王真眼」的小鸟游六花——一个把"中二"写在脸上、心里却温柔又倔强的少女。RikkaAI 把她做成一个**住在你电脑桌面上、有自己生活的数字生命**：
+
+- 她**会记住你**——记得你的喜好、约定、重要的事，越用越懂你；
+- 她**会主动找你**——饭点关心你吃饭、感觉你累了问候一声、深夜怕打扰就忍住；
+- 她**有情绪**——会因你的话开心、低落、生气，好感度慢慢积累；
+- 她**有自己的声音**——用 GPT-SoVITS 微调的六花音色，日语卖萌 + 中文翻译；
+- 她**会成长**——记录关于自己的新发现，人设随时间越来越丰富。
+
+她不是"问一句答一句"的工具，而是在每次对话、记忆和状态变化里**逐渐形成连续感**的存在。
+
+> 「邪王真眼是最强的！」—— 小鸟游六花
 
 ---
 
-## 🖥 界面预览
+## 🎯 项目定位
+
+面向 **Windows 10/11** 的 Python 桌面 AI 伴侣，用 **PyQt5** 构建界面、通过 **OpenAI 兼容接口**（默认 DeepSeek）连接大模型。不追求"更聪明的问答"，而追求**长期陪伴的自洽人格**。
+
+## ⚡ 核心能力
+
+| 功能域 | 核心能力 | 状态 |
+|--------|----------|------|
+| 智能对话 | 流式输出、上下文压缩、Function Calling（60+ 工具）、失败重试 | 核心可用 |
+| 多层记忆 | 会话 → 摘要 → RAG → 知识图谱 → 向量检索，跨会话持久化 | 核心可用 |
+| 情感系统 | 心情/精力/好感度 + 需求体系 + 主动意愿 | 核心可用 |
+| 链式主动 | 自主关心、临时回访、记忆唤起、概率主动决策 | 核心可用 |
+| 日记系统 | 实时流水日记 + 每日自动收尾 + 每周周记 | 核心可用 |
+| 工具集 | 天气、搜索、文件、截图、识图、OCR、画图、B站 等 60+ | 核心可用 |
+| 语音 | GPT-SoVITS 定制音色 | 可用（需本地服务） |
+| QQ 桥接 | **NapCat / OneBot v11**、权限控制、主动发图/发消息 | 可用 |
+| 搜索引擎 | **Docker + SearXNG** 自建聚合搜索 | 可选配置 |
+| 扩展 | Skills + MCP 客户端、按能力路由模型、后台做梦蒸馏 | 可选配置 |
+
+## 🖼 界面预览
+
+<p align="center">
+  <img src="../docs/preview/chat.png" alt="对话界面" width="100%"/>
+  <br/><sub>👆 对话界面 · 流式输出 + 工具调用</sub>
+</p>
+<p align="center">
+  <img src="../docs/preview/memory.png" alt="记忆界面" width="100%"/>
+  <br/><sub>👆 记忆 / 知识图谱 / 记忆星图</sub>
+</p>
+<p align="center">
+  <img src="../docs/preview/history.png" alt="历史界面" width="100%"/>
+  <br/><sub>👆 历史会话</sub>
+</p>
+<p align="center">
+  <img src="../docs/preview/settings.png" alt="设置界面" width="100%"/>
+  <br/><sub>👆 设置 · 预设方案 / 通道 / 行为规则</sub>
+</p>
+
+---
+
+## 💬 智能对话
+
+- **流式输出**：像真人一样逐字打字，实时看到结果
+- **上下文压缩**：超长对话自动生成摘要，保留最近关键轮次
+- **Function Calling**：60+ 工具，按需加载，失败重试、副作用记账防重放
+- **三层决策**：先规则判断、再轻量 LLM 兜底，纯闲聊不背工具列表（人设不稀释）
+
+## 🧠 多层记忆系统
 
 ```
-┌─────────────────────────────────────────────────────┐
-│  RikkaAI - 六花AI          ➕📜🧠📖📝🔧💾⚙       │
-├──────────────┬──────────────────────────────────────┤
-│  🦋 立绘     │  ✨ 邪王真眼，觉醒！✨               │
-│              │                                      │
-│  小鸟游六花  │  你好！我是小鸟游六花！              │
-│  邪王真眼使  │  …那个，请多指教！                    │
-│              │                                      │
-│  ────────    │                                      │
-│  邪王真眼…✨ │  ┌──────────────────────────┐       │
-│  ────────    │  │ 输入消息…          [发送] │       │
-│  💬 语录轮播 │  └──────────────────────────┘       │
-├──────────────┴──────────────────────────────────────┤
-│  🔮 邪王真眼 激活中           Model: deepseek-v4    │
-└─────────────────────────────────────────────────────┘
+会话上下文（窗口内）→ 长对话压缩（摘要）→ RAG 全文检索 → 知识图谱 → 向量语义检索
 ```
+
+- **记忆可追溯**：每条记忆都有来源
+- **知识图谱**：自动抽取实体与关系
+- **自我演化**：六花会记录新发现，人设慢慢成长
+- **后台做梦**：安静时自动合并记忆、消解矛盾、更新画像
+
+## 💗 情感与主动性
+
+- **三维情感**：心情 / 精力 / 好感度，动态影响回复语气
+- **需求体系**：社交、掌控、新奇、休息 + 精力池 + 孤独感
+- **链式主动**：自主判断何时找你（白天 10~60 分钟、深夜 2~7 小时），冷却去重
+- **临时回访**：你说"累了 / 去开会"，它会过一会儿再回来问
+- **概率主动决策**：结合需求、睡眠时段、冷却，算出该不该开口
+
+## 🎙 语音 · 视觉 · 工具集
+
+- **语音**：GPT-SoVITS 微调音色，日语说 + 中文翻译
+- **视觉**：GLM-4V-Flash 识图 + OCR + 智能搜图 + AI 生成
+- **60+ 工具**：文件读写、终端、天气、搜索、B站、GitHub、截图、识图、画图、QQ、语音
+
+---
+
+## 📱 QQ 桥接（NapCat）
+
+RikkaAI 通过 QQ 和契约者保持联系，基于 **[NapCat](https://napneko.github.io/guide/napcat)**（OneBot v11 协议的开源 QQ 机器人框架）。
+
+```
+QQ ⇄ NapCat（OneBot v11 WebSocket/HTTP） ⇄ RikkaAI 的 qq_bridge（权限控制）
+```
+
+1. **安装 NapCat**：按 [官方文档](https://napneko.github.io/guide/napcat) 部署（QQ 登录态 + OneBot v11 接口）
+2. **配置 NapCat 地址**：把 OneBot 连接信息填入 RikkaAI 的 QQ 桥接配置
+3. **配置白名单**：`QQ_ALLOWED_USERS` —— 只有契约者的 QQ 号有全部工具权限，其他人只能聊天
+4. **主动发 QQ**：`send_qq_message` / `send_qq_image` 主动发消息/图片；主动关心可同步 QQ 多通道送达
+
+> ⚠️ NapCat 的 QQ 登录态属私人凭据，不要上传/泄露；未授权用户不能操作电脑。
+
+---
+
+## 🔎 个人搜索引擎（SearXNG）
+
+用 **[Docker Desktop](https://www.docker.com/products/docker-desktop/)** 跑 **[SearXNG](https://docs.searxng.org/)**（聚合 Google/Bing/Wikipedia 等 70+ 引擎，去中心化、隐私友好）。
+
+```bash
+docker run -d --name searxng -p 8080:8080 \
+  -e "SEARXNG_BASE_URL=http://localhost:8080" \
+  -v searxng-data:/etc/searxng \
+  searxng/searxng:latest
+```
+
+配置 `SEARXNG_BASE_URL = "http://localhost:8080"`（`config.py`）。
+
+> 搜索会自动探测 SearXNG 可用性：可用走 SearXNG，不可用自动切 **Argo** / DDGS，并明确告知。
 
 ---
 
 ## 🚀 快速开始
 
-### 环境要求
-- Python 3.10+
-- 一个兼容 OpenAI 格式的 API（DeepSeek、OpenAI、GLM 等）
-
-### 安装
-
 ```bash
-# 1. 进入项目目录
 cd RikkaAI
-
-# 2. 安装依赖
 pip install -r requirements.txt
-
-# 3. 启动
+cp config.example.py config.py        # 填入 API Key
 python main.py
 ```
 
-### 首次配置
-
-启动后点击右上角 ⚙ → **预设方案**，添加你的 API Key：
-
-| 字段 | 示例 |
-|------|------|
-| API Key | `sk-xxxxxxxxxxxxxxxxxxxxxxxx` |
-| 模型 | `deepseek-v4-flash` / `gpt-4o` / `glm-4-flash` |
-| API 地址 | `https://api.deepseek.com/v1` |
-
-> 💡 **提示**：你可以在设置中配置多组 API 预设方案，快速切换。
-
-API Key 不应写入源码、JSON 或提交到 Git。Windows 桌面端会优先保存到当前用户的
-Windows Credential Manager；CI/服务器可使用 `RIKKAAI_API_KEY` 等环境变量。配置文件只保存模型、地址和 `secret_ref`。
-
-默认测试不会调用真实 API。需要进行受控联调时，显式设置 `RIKKAAI_E2E=1` 后运行
-`python tests/run_e2e.py`；脚本不会输出 Key、完整回复或写入真实对话数据库。
+> 启动后打开 **设置 → 预设方案** 添加 API Key / 模型 / 地址。
 
 ---
 
-## 📁 项目结构
+## 🔒 数据与隐私
 
-```
-RikkaAI/
-├── main.py                  # 应用入口
-├── main_window.py           # 主窗口（UI + 定时器管理器）
-├── config.py                # 全局配置
-├── requirements.txt         # 依赖清单
-│
-├── brain/                   # 🧠 AI 核心
-│   ├── agent.py             # 对话核心（流式输出 + 工具循环）
-│   ├── tools.py             # Function Calling 工具集（46个工具）
-│   ├── emotion.py           # 情感状态系统
-│   ├── memory_vault.py      # 记忆库（SQLite + FTS，两级分类）
-│   ├── memory_summary.py    # 记忆总结
-│   ├── graph_memory.py      # 知识图谱记忆（实体-关系）
-│   ├── history.py           # 对话历史（SQLite）
-│   ├── diary.py             # 日记系统
-│   ├── context_compressor.py # 长对话智能压缩
-│   ├── scribe.py            # 记录器
-│   ├── surf.py              # 冲浪系统（B站搜索）
-│   ├── voice.py             # 语音系统
-│   └── qq_bridge.py         # QQ 桥接
-│
-├── gui/                     # 🎨 图形界面
-│   ├── chat_widget.py       # 聊天气泡组件
-│   ├── character_widget.py  # 角色立绘面板
-│   ├── input_panel.py       # 输入面板
-│   ├── settings_widgets.py  # 设置控件（预设编辑等）
-│   ├── theme_manager.py     # 主题/背景运行时应用
-│   ├── history_dialog.py    # 历史会话
-│   ├── dashboard_pages.py   # 仪表盘（历史/记忆/设置）
-│   ├── memory_detail_dialog.py # 记忆详情
-│   ├── memo_dialog.py       # 备忘录
-│   ├── tools_dialog.py      # 工具面板
-│   └── ...                  # 其他对话框
-│
-├── persona/                 # 📜 人设文件体系（AI 驱动）
-│   ├── character.md         #   角色人设（可被 AI 自我演化）
-│   ├── system_rules.md      #   行为规范（主动性规则）
-│   └── memo.md              #   备忘录（AI 自主读写）
-│
-├── assets/                  # 🎨 资源文件
-│   ├── images/              #   头像、立绘、背景
-│   └── styles/              #   QSS 主题样式
-│
-├── summaries/               # 📋 对话摘要
-├── conversations/           # 💾 长对话存档
-└── memory_data/             # 🗄 SQLite 数据库（历史、记忆、图谱）
-```
+- ✅ **API Key 不写源码**：存于 Windows 凭据管理器（secret_store）
+- ✅ **记忆、会话、日记全部本地存储**，不上传任何服务器
+- ✅ 人设 / 备忘录 / 记忆等个人数据目录已 `.gitignore` 排除，**源码仓库不含任何真实对话或个人数据**
+- ✅ 可选**隐私模式**（所有推理留在本机）
+
+## 📄 许可证
+
+**MIT License** —— 详见根目录 [LICENSE](../LICENSE)。自由使用、修改、分发、商用，保留版权声明即可。
+
+## ⚠️ 免责声明
+
+- 非官方同人项目，角色「小鸟游六花」版权归原版权所有方所有
+- 代码仅供学习与个人使用；API 服务需自行配置与付费
 
 ---
 
-## 🧠 核心系统详解
+<div align="center">
 
-### 一、人设三文件体系（Persona System）
+> **「邪王真眼是最强的！」** —— 小鸟游六花
+>
+> 如果 RikkaAI 对你有帮助，欢迎 **star ⭐** / **fork** 🍴
 
-不再写死 System Prompt。六花的"人格"由三个 Markdown 文件驱动：
-
-| 文件 | 作用 | 谁在写 |
-|------|------|--------|
-| `persona/character.md` | 角色人设——性格、说话风格、背景故事 | 用户编写，**AI 用 `append_self_discovery` 自动追加** |
-| `persona/system_rules.md` | 行为规范——主动性规则、输出格式、文件权限 | 用户编写，AI **只读** |
-| `persona/memo.md` | 备忘录——重要的事情记下来 | AI 用 `write_to_memo` 自主写入 |
-
-**每次新会话启动时**，六花自动读取这三个文件，加上上一次对话的摘要，注入当前时间，组装成完整的 System Prompt。
-
-**人设自我演化**：当六花在对话中发现自己"其实很粘人""学会了安慰人"时，会调用 `append_self_discovery` 自动追加到 `character.md` 的自我成长记录区——人设会随时间越来越丰富。
-
----
-
-### 二、链式主动关心（Chain Proactive）
-
-这是 RikkaAI 最有特色的设计。六花拥有**自主判断何时找你**的能力。
-
-**工作流程：**
-
-```
-1. 定时器触发
-   ↓
-2. 六花被唤醒，看到当前时间 + 上下文
-   ↓
-3. 自主判断：该不该找契约者？
-   ├─ ✅ 饭点了 → 关心吃饭
-   ├─ ✅ 感觉ta累了 → 问候
-   ├─ ✅ 单纯想ta了 → 聊聊
-   └─ ❌ 深夜/忙/考试 → 跳过
-   ↓
-4. **必须调用 set_proactive_timer 设下一次**
-   ↓
-5. 回到 1，链条永不断
-```
-
-**间隔策略（由 AI 自主决定）：**
-
-| 时段 | 推荐间隔 | 逻辑 |
-|------|---------|------|
-| ☀ 白天 8:00-23:00 | 10~60 分钟 | 刚聊过→短点，很久没动静→长点 |
-| 🌙 深夜 23:00-8:00 | 2~7 小时 | 不打扰睡眠，加随机性 |
-
-> 你可以在 **设置 → 行为规则** 中编辑 `system_rules.md` 调整这些策略。
-
----
-
-### 三、临时回访（Follow-up）
-
-每次对话结束时，六花会**自己判断**要不要过一会儿再找你：
-
-| 你说… | 六花会… |
-|-------|---------|
-| "累了" | 15 分钟后看看你好点没 |
-| "去开会" | 1 小时后问开完了没 |
-| "等下试" | 5 分钟后问试了没 |
-| "去吃饭" | 40 分钟后问吃了什么 |
-
-> 🤝 如果你自己回来告诉了结果，六花会自动取消对应的回访——不会你已经说了她还去问。
-
----
-
-### 四、多层记忆系统
-
-六花有 **四层记忆**，从短到长：
-
-```
-┌─────────────────────────────────────┐
-│  Layer 1: 当前会话上下文（窗口内）   │ ← 本次聊天的完整消息
-├─────────────────────────────────────┤
-│  Layer 2: 对话摘要（自动压缩）       │ ← 超长对话自动总结
-├─────────────────────────────────────┤
-│  Layer 3: RAG 全文检索              │ ← SQLite FTS，关键词匹配
-├─────────────────────────────────────┤
-│  Layer 4: 知识图谱                  │ ← 实体-关系图，精准回忆
-└─────────────────────────────────────┘
-```
-
-- **短记忆**：直接由 `_history` 维护当前对话
-- **长对话压缩**：超过 30 轮自动用 LLM 生成摘要，保留最近 20 轮
-- **RAG 记忆**：每次回复时用用户输入的关键词搜索 SQLite，找到相关旧对话
-- **知识图谱**：提取对话中的实体（人物/地点/偏好）和关系（喜欢/讨厌/想要），形成知识网络
-- **日记**：每天一份，记录重要对话
-
----
-
-### 五、情感系统
-
-六花有三个情感维度，每次对话都会更新：
-
-| 维度 | 范围 | 影响 |
-|------|------|------|
-| 😊 **情绪** | happy / neutral / sad / angry | 回复风格调整 |
-| ⚡ **精力** | 0-100 | 影响回复热情 |
-| 💕 **好感度** | 0-100 | 慢慢积累，越来越亲近 |
-
-情感变化会反映在 prompt 中，例如：
-> 「你心情不错，回复要更活泼热情一些」
-
----
-
-### 六、Function Calling 工具集
-
-六花拥有 **28 个工具**，分为以下几类：
-
-**文件操作**
-`read_file` · `write_file` · `edit_file` · `list_directory` · `search_files` · `grep_file`
-
-**系统信息**
-`get_current_time` · `get_system_info` · `get_network_status`
-
-**视觉能力**
-`screenshot` · `send_image` · `describe_image` · `ocr_image` · `game_guide`（邪王真眼·攻略术）
-
-**记忆与备忘**
-`read_memories` · `save_memory` · `read_summaries` · `write_to_memo`
-
-**网络搜索**
-`web_search` · `bilibili_search`
-
-**主动性与成长（升级新增）**
-`set_proactive_timer` — 设置链式主动定时器
-`set_follow_up` — 设置临时回访
-`cancel_follow_up` — 取消待处理的回访
-`write_to_memo` — 写入备忘录
-`append_self_discovery` — 记录自我发现
-`update_diary` — 记录日记
-
-**其他**
-`open_app` — 打开应用程序
-
----
-
-## ⚙ 配置总览
-
-### 设置界面
-
-打开设置（右上角 ⚙）：
-
-| 标签页 | 功能 |
-|--------|------|
-| **预设方案** | 多组 API Key/模型/地址 快速切换 |
-| **回复温度** | 控制 AI 的创造力和稳定性 |
-| **主动聊天** | 开启/关闭链式主动 + 摸鱼彩蛋 |
-| **行为规则** | **编辑人设、行为规范、备忘录**（Markdown 直接编辑）|
-
-### 行为规则编辑
-
-**设置 → 行为规则** 中可以直接编辑三个核心文件：
-
-- **character.md**：调整六花的性格、说话风格
-- **system_rules.md**：调整主动间隔范围、回访规则等行为细节
-- **memo.md**：手动查看或编辑备忘录
-
----
-
-## 🔧 技术栈
-
-| 层次 | 技术 |
-|------|------|
-| UI 框架 | PyQt5 |
-| AI 引擎 | OpenAI SDK（兼容 DeepSeek / GLM 等） |
-| 流式输出 | SSE stream + QThread 异步 |
-| 记忆存储 | SQLite + 文件系统 |
-| 全文检索 | SQLite LIKE + 关键词分词 |
-| 知识图谱 | SQLite 自定义节点-边模型 |
-| 图片分析 | 用户在方案设置中配置的兼容视觉模型 |
-| 网络搜索 | DuckDuckGo / Google |
-| 主题 | 自定义 QSS 暗色哥特风 |
-
----
-
-## 📜 开源 & 许可
-
-RikkaAI 是一个非官方的同人项目，基于《中二病也要谈恋爱》的小鸟游六花角色。
-
-- 角色版权归原作者所有
-- 代码仅供学习和个人使用
-- 使用的 API 服务需自行配置和付费
-
----
-
-## 💬 关于
-
-RikkaAI 的设计理念是：**AI 不该只是被动的问答工具**。通过链式主动关心、临时回访、记忆系统和情感模型，让它更像一个有温度的存在——会想找你、会记得你的事、会慢慢成长。
-
-> 「邪王真眼是最强的！」——小鸟游六花
+</div>
