@@ -1,0 +1,70 @@
+{
+  "品牌": {
+    "名称": "RikkaAI - 小鸟游六花",
+    "风格": "日系治愈风",
+    "关键词": ["樱花","淡紫","圆润","温暖","二次元"]
+  },
+  "颜色": {
+    "primary": "#C88BFF",
+    "primaryLight": "#E9C8FF",
+    "pink": "#FFB7D1",
+    "pinkLight": "#FFF3EA",
+    "bg": "#FFFFFF",
+    "bgWarm": "#FFFCF8",
+    "bgInput": "#FFF8F2",
+    "line": "#EAEAEA",
+    "textPrimary": "#333333",
+    "textSecondary": "#666666",
+    "textTertiary": "#999999",
+    "textCaption": "#BBBBBB",
+    "danger": "#FF6666",
+    "dangerBg": "#FFF0F0",
+    "success": "#44BB66",
+    "successBg": "#F0FFF0",
+    "warning": "#FFAA44",
+    "avatarBorder": "#FFB6C1"
+  },
+  "字体": {
+    "family": "Noto Sans SC, Microsoft YaHei, PingFang SC, sans-serif",
+    "title": { "size": 18, "weight": "bold" },
+    "subtitle": { "size": 15, "weight": "600" },
+    "body": { "size": 13, "weight": "normal" },
+    "caption": { "size": 11, "weight": "normal" },
+    "small": { "size": 10, "weight": "normal" }
+  },
+  "圆角": {
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 18,
+    "round": 999
+  },
+  "间距": {
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 20,
+    "xxl": 24
+  },
+  "阴影": {
+    "card": "0 2px 8px rgba(0,0,0,0.06)",
+    "popup": "0 4px 16px rgba(0,0,0,0.10)",
+    "avatar": "0 4px 12px rgba(255,182,193,0.20)"
+  },
+  "组件": {
+    "标题栏": { "height": 60, "bg": "#FFFFFF", "borderBottom": "1px solid #EAEAEA" },
+    "角色面板": { "width": 240, "bg": "#FFFFFF" },
+    "聊天区": { "bg": "#FFFCF8" },
+    "输入面板": { "height": 72, "bg": "#FFFFFF" },
+    "状态栏": { "height": 24, "bg": "#FFFCF8" },
+    "用户气泡": { "bg": "#FFF3EA", "radius": 14, "padding": "12px 16px" },
+    "AI气泡": { "bg": "#FFFFFF", "border": "1px solid #EAEAEA", "radius": 14, "padding": "12px 16px" },
+    "按钮默认": { "bg": "transparent", "border": "1px solid #EAEAEA", "radius": 16, "color": "#999" },
+    "按钮悬停": { "bg": "#FFF3EA", "borderColor": "#FFB7D1", "color": "#C88BFF" },
+    "发送按钮": { "gradient": "#FFB7D1 → #E9C8FF → #C88BFF", "radius": 18, "color": "#FFFFFF" },
+    "主按钮": { "bg": "#C88BFF", "radius": 8, "color": "#FFFFFF" },
+    "危险按钮": { "bg": "#FFF0F0", "border": "1px solid #FFCCCC", "color": "#FF6666" }
+  }
+}

@@ -1,0 +1,288 @@
+#HomeWidget,
+#HomeForeground,
+#HomeContent,
+#HomeQuickActions,
+#HomeRecentPanel,
+#HomeRightRail {
+    background:transparent;
+    border:none;
+}
+
+#HomeSidebar {
+    background:rgba(252,250,255,0.93);
+    border:1px solid transparent;
+    border-radius:8px;
+}
+
+#HomeBrand {
+    color:#312659;
+    font-family:"Segoe UI Semibold", "Microsoft YaHei UI", sans-serif;
+    font-size:18px;
+    font-weight:700;
+}
+
+#HomeNavButton {
+    background:transparent;
+    border:1px solid transparent;
+    border-radius:7px;
+    text-align:left;
+    padding:0 11px;
+    color:#4f4b66;
+    font-size:11px;
+}
+
+#HomeNavButton:hover {
+    background:rgba(255,255,255,0.88);
+    border-color:#ded5ee;
+    color:#5b3eb0;
+}
+
+#HomeNavButton[active="true"] {
+    background:qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 rgba(228,217,255,0.95), stop:1 rgba(243,232,255,0.92));
+    border-color:#cfbdf1;
+    color:#5731bc;
+    font-weight:700;
+}
+
+#HomeProfile {
+    background:rgba(255,255,255,0.70);
+    border:1px solid #dfd5ee;
+    border-radius:8px;
+}
+
+#HomeProfileName {
+    color:#343149;
+    font-size:11px;
+    font-weight:700;
+}
+
+#HomeProfileState {
+    color:#6b4dcb;
+    font-size:9px;
+}
+
+#HomeUpgradeButton {
+    background:rgba(255,255,255,0.58);
+    border:1px solid #d8c9ef;
+    border-radius:7px;
+    color:#6b4dba;
+    font-size:10px;
+    font-weight:600;
+}
+
+#HomeUpgradeButton:hover {
+    background:#ffffff;
+    border-color:#ac91dc;
+}
+
+#HomeCanvas {
+    background:#f7f1ff;
+    border:1px solid transparent;
+    border-radius:8px;
+}
+
+#HomeBackground {
+    background:transparent;
+    border:none;
+}
+
+#HomeBackdropShade {
+    background:qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 rgba(250,247,255,0.34),
+        stop:0.48 rgba(255,255,255,0.08),
+        stop:1 rgba(246,237,255,0.10));
+    border:none;
+    border-radius:8px;
+}
+
+#HomeGreeting {
+    color:#24234d;
+    font-size:25px;
+    font-weight:700;
+}
+
+#HomeSubtitle {
+    color:#494664;
+    font-size:12px;
+}
+
+#HomeComposer {
+    background:rgba(255,255,255,0.86);
+    border:1px solid rgba(214,203,232,0.96);
+    border-top:1px solid rgba(255,255,255,0.96);
+    border-radius:8px;
+}
+
+#HomeInput {
+    background:rgba(255,255,255,0.68);
+    border:1px solid #e0d8eb;
+    border-radius:7px;
+    padding:8px 11px;
+    color:#34354d;
+    font-size:12px;
+}
+
+#HomeInput:focus {
+    background:#ffffff;
+    border-color:#9676dd;
+}
+
+#HomeSendButton {
+    background:qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 #a66ce9, stop:0.55 #7950de, stop:1 #5937cf);
+    border:none;
+    border-radius:8px;
+    padding:0;
+}
+
+#HomeSendButton:hover {
+    background:qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 #b57df0, stop:0.55 #8960e5, stop:1 #6847d6);
+}
+
+#HomeModeButton {
+    background:rgba(255,255,255,0.72);
+    border:1px solid #e3dced;
+    border-radius:6px;
+    color:#625a76;
+    font-size:9px;
+    padding:0 8px;
+}
+
+#HomeModeButton:hover {
+    background:#ffffff;
+    border-color:#baaae0;
+    color:#6040ad;
+}
+
+#HomeSectionTitle {
+    color:#32314a;
+    font-size:11px;
+    font-weight:700;
+}
+
+#HomeActionCard {
+    background:rgba(255,255,255,0.80);
+    border:1px solid rgba(219,209,234,0.96);
+    border-top:1px solid rgba(255,255,255,0.98);
+    border-radius:8px;
+    color:#3f3e56;
+    font-size:9px;
+    font-weight:600;
+    padding:7px 4px;
+}
+
+#HomeActionCard:hover {
+    background:rgba(255,255,255,0.96);
+    border-color:#af99d7;
+    color:#56379f;
+}
+
+#HomeTextButton {
+    background:rgba(255,255,255,0.48);
+    border:1px solid rgba(214,203,229,0.72);
+    border-radius:6px;
+    color:#6447ad;
+    font-size:9px;
+    padding:3px 7px;
+}
+
+#HomeTextButton:hover {
+    background:#ffffff;
+    border-color:#baa7d9;
+}
+
+#HomeRecentScroll {
+    background:transparent;
+    border:none;
+}
+
+#HomeRecentRow {
+    background:rgba(255,255,255,0.82);
+    border:1px solid rgba(222,212,235,0.95);
+    border-radius:7px;
+}
+
+#HomeRecentRow:hover {
+    background:rgba(255,255,255,0.96);
+    border-color:#b9a4dc;
+}
+
+#HomeRecentTitle {
+    color:#36354c;
+    font-size:10px;
+    font-weight:700;
+}
+
+#HomeRecentMeta,
+#HomeRecentTime {
+    color:#7b758a;
+    font-size:8px;
+}
+
+#HomeRecentTag {
+    min-width:50px;
+    min-height:20px;
+    background:rgba(239,232,253,0.9);
+    border:1px solid #d9ccef;
+    border-radius:6px;
+    color:#7654bd;
+    font-size:8px;
+}
+
+#HomeEmptyRecent {
+    color:#777284;
+    font-size:10px;
+    padding:18px;
+}
+
+#HomeRailCard {
+    background:rgba(255,255,255,0.83);
+    border:1px solid rgba(218,207,232,0.96);
+    border-top:1px solid rgba(255,255,255,0.98);
+    border-radius:8px;
+}
+
+#HomeRailTitle {
+    color:#36334b;
+    font-size:10px;
+    font-weight:700;
+}
+
+#HomeStatItem {
+    background:rgba(249,247,253,0.82);
+    border:1px solid #e6dfed;
+    border-radius:7px;
+}
+
+#HomeStatLabel {
+    color:#686376;
+    font-size:8px;
+}
+
+#HomeStatValue {
+    color:#333046;
+    font-size:18px;
+    font-weight:700;
+}
+
+#HomeRailTool {
+    background:rgba(250,248,253,0.84);
+    border:1px solid #e3dcea;
+    border-radius:7px;
+    color:#59536a;
+    font-size:8px;
+    padding:5px 2px;
+}
+
+#HomeRailTool:hover {
+    background:#ffffff;
+    border-color:#b8a5d8;
+    color:#6040a8;
+}
+
+#HomeRailBody {
+    color:#696477;
+    font-size:9px;
+}

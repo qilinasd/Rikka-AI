@@ -1,0 +1,119 @@
+/* Memory page restyle — scoped to #MemoryPage so History/Settings stay intact. */
+
+/* 玻璃卡片更通透、圆角更大 */
+#MemoryPage #DashboardGlassCard {
+    background:rgba(254,253,255,0.88);
+    border:1px solid rgba(255,255,255,0.94);
+    border-radius:18px;
+}
+
+/* 页内搜索框（白底圆角，位于统计卡上方） */
+#MemoryPage #MemorySearch {
+    min-height:40px;
+    padding:0 14px;
+    background:rgba(255,255,255,0.86);
+    border:1px solid rgba(126,86,200,0.14);
+    border-radius:12px;
+    color:#3d3152;
+    font-size:12px;
+}
+#MemoryPage #MemorySearch:focus {
+    background:#ffffff;
+    border-color:rgba(129,80,223,0.40);
+}
+#MemoryPage #MemorySearch:focus,
+#MemoryPage #MemorySearch:hover { outline:none; }
+
+/* 统计卡：白→淡紫渐变、大圆角 */
+#MemoryPage #MemoryOverviewTile {
+    min-height:66px;
+    background:qlineargradient(x1:0,y1:0,x2:0,y2:1,
+        stop:0 rgba(255,255,255,0.98), stop:1 rgba(244,239,255,0.94));
+    border:1px solid rgba(255,255,255,0.96);
+    border-radius:16px;
+}
+#MemoryPage #MemoryOverviewTile:hover {
+    background:qlineargradient(x1:0,y1:0,x2:0,y2:1,
+        stop:0 #ffffff, stop:1 rgba(237,228,253,0.96));
+    border-color:rgba(129,80,223,0.18);
+}
+#MemoryPage #MemoryTileBadge {
+    background:rgba(255,255,255,0.90);
+    border:1px solid rgba(129,80,223,0.12);
+    border-radius:12px;
+}
+#MemoryPage #MemoryTileBadge[tone="ai"] { background:rgba(255,126,174,0.10); border-color:rgba(255,126,174,0.22); }
+#MemoryPage #MemoryTileBadge[tone="star"] { background:rgba(129,80,223,0.10); border-color:rgba(129,80,223,0.20); }
+#MemoryPage #MemoryTileBadge[tone="favorite"] { background:rgba(239,123,180,0.12); border-color:rgba(239,123,180,0.22); }
+#MemoryPage #MemoryTileBadge[tone="emoji"] { background:rgba(244,167,71,0.12); border-color:rgba(244,167,71,0.24); }
+#MemoryPage #MemoryTileBadge[tone="settings"] { background:rgba(106,127,224,0.11); border-color:rgba(106,127,224,0.22); }
+#MemoryPage #DashboardStatCaption { color:#8c819d; font-size:11px; }
+#MemoryPage #DashboardStatValue { color:#2f2441; font-size:24px; font-weight:800; }
+
+/* 快速访问 / chips / 操作按钮：hover、active 高亮统一为设计稿紫 */
+#MemoryPage #DashboardNavButton { border-radius:10px; }
+#MemoryPage #DashboardNavButton:hover {
+    background:rgba(129,80,223,0.10); color:#7042c4;
+}
+#MemoryPage #DashboardNavButton[active="true"] {
+    background:rgba(129,80,223,0.13); color:#7042c4; font-weight:700;
+}
+#MemoryPage #DashboardChip { min-height:32px; padding:0 15px; border-radius:10px; }
+#MemoryPage #DashboardChip:hover { border-color:rgba(129,80,223,0.26); color:#7042c4; }
+#MemoryPage #DashboardChip[active="true"] { background:#8451df; color:#ffffff; font-weight:700; }
+#MemoryPage #DashboardActionButton { border-radius:11px; }
+#MemoryPage #DashboardActionButton:hover {
+    background:rgba(255,255,255,0.94);
+    border-color:rgba(129,80,223,0.24); color:#7040c7;
+}
+
+/* 时间线行类型标签：按大类 tone 上色（重要的事/喜好/日常/系统/一般） */
+#MemoryPage #DashboardPill { padding:3px 9px; border-radius:9px; font-size:11px; font-weight:700; border:1px solid transparent; }
+#MemoryPage #DashboardPill[tone="重要的事"] { background:rgba(129,80,223,0.12); color:#7049c4; }
+#MemoryPage #DashboardPill[tone="喜好"] { background:rgba(239,123,180,0.14); color:#d05296; }
+#MemoryPage #DashboardPill[tone="日常"] { background:rgba(244,167,71,0.16); color:#c0862c; }
+#MemoryPage #DashboardPill[tone="系统"] { background:rgba(106,127,224,0.14); color:#4b5fc0; }
+#MemoryPage #DashboardPill[tone="一般"] { background:rgba(180,154,232,0.16); color:#8a6fd0; }
+
+/* 行内图标按钮：查看/删除，删除按钮 danger 悬停 */
+#MemoryPage #DashboardIconButton {
+    background:transparent;
+    border:1px solid transparent;
+    border-radius:9px;
+}
+#MemoryPage #DashboardIconButton:hover {
+    background:rgba(129,80,223,0.10);
+}
+#MemoryPage #DashboardIconButton[tone="danger"]:hover {
+    background:rgba(220,72,109,0.14);
+}
+
+#MemoryPage #MemoryTimelineRow {
+    background:rgba(255,255,255,0.66);
+    border:1px solid rgba(126,82,218,0.08);
+    border-radius:10px;
+}
+#MemoryPage #MemoryTimelineRow:hover {
+    background:rgba(255,255,255,0.90);
+    border-color:rgba(126,82,218,0.18);
+}
+#MemoryPage #MemoryTimelineText { color:#43364f; font-size:12px; }
+#MemoryPage #MemoryFavoriteButton {
+    min-width:30px; max-width:30px; min-height:30px; max-height:30px;
+    padding:0; background:transparent; border:1px solid transparent;
+    border-radius:9px; color:#aa9bc9; font-size:15px;
+}
+#MemoryPage #MemoryFavoriteButton:hover { background:rgba(129,80,223,0.09); color:#8150df; }
+#MemoryPage #MemoryFavoriteButton[active="true"] { color:#8150df; }
+#MemoryPage #DashboardLoadMore {
+    min-height:34px; background:rgba(255,255,255,0.60);
+    border:1px solid rgba(126,82,218,0.12); border-radius:9px;
+    color:#7449c8; font-size:11px; font-weight:600;
+}
+#MemoryPage #DashboardLoadMore:hover { background:rgba(255,255,255,0.90); border-color:rgba(126,82,218,0.24); }
+#MemoryPage #DashboardList::item { border:none; margin:2px 0; padding:0; background:transparent; }
+#MemoryPage #DashboardList::item:hover,
+#MemoryPage #DashboardList::item:selected { background:transparent; border:none; }
+
+/* 图谱/趋势等小节标题稍放大 */
+#MemoryPage #DashboardSectionTitle { color:#382d49; font-size:15px; font-weight:700; }

@@ -1,0 +1,340 @@
+/* Surf history dashboard - scoped so the legacy dialog remains unchanged. */
+#SurfHistoryPage,
+#SurfHistoryPage #DashboardContent,
+#SurfMainColumn,
+#SurfInsightsRail {
+    background:transparent;
+    border:none;
+}
+
+#SurfHistoryPage #DashboardGlassCard,
+#SurfFilterCard,
+#SurfTimelineCard {
+    background:rgba(253,251,255,0.91);
+    border:1px solid rgba(255,255,255,0.94);
+    border-radius:14px;
+}
+
+#SurfStatCard {
+    min-height:64px;
+    background:qlineargradient(x1:0,y1:0,x2:0,y2:1,
+        stop:0 rgba(255,255,255,0.96), stop:1 rgba(245,240,255,0.91));
+    border:1px solid rgba(255,255,255,0.96);
+    border-radius:14px;
+}
+#SurfStatCard:hover {
+    background:rgba(255,255,255,0.98);
+    border-color:rgba(126,82,218,0.18);
+}
+#SurfStatIcon {
+    background:rgba(129,80,223,0.09);
+    border:1px solid rgba(129,80,223,0.14);
+    border-radius:12px;
+}
+#SurfStatIcon[tone="pink"] { background:rgba(239,123,180,0.12); border-color:rgba(239,123,180,0.23); }
+#SurfStatIcon[tone="blue"] { background:rgba(86,169,223,0.11); border-color:rgba(86,169,223,0.22); }
+#SurfStatIcon[tone="gold"] { background:rgba(244,167,71,0.12); border-color:rgba(244,167,71,0.24); }
+#SurfStatValue { color:#352646; font-size:22px; font-weight:800; }
+
+#SurfFilterCombo {
+    min-width:100px; max-width:116px; min-height:34px;
+    padding:0 8px;
+    background:rgba(255,255,255,0.88);
+    border:1px solid rgba(117,80,185,0.17);
+    border-radius:9px;
+    color:#4c3e5a;
+    font-size:11px;
+}
+#SurfFilterCombo:hover, #SurfFilterCombo:focus {
+    background:#ffffff;
+    border-color:rgba(126,82,218,0.34);
+}
+#SurfFilterCombo::drop-down { border:none; width:20px; }
+#SurfFilterCombo QAbstractItemView {
+    background:#ffffff;
+    border:1px solid rgba(126,82,218,0.16);
+    selection-background-color:#f1e9ff;
+    selection-color:#6741b6;
+}
+
+#SurfHistoryList {
+    background:transparent;
+    border:none;
+    outline:none;
+}
+#SurfHistoryList::item {
+    background:transparent;
+    border:none;
+    margin:2px 0;
+    padding:0;
+}
+#SurfHistoryList::item:selected { background:transparent; border:none; }
+#SurfHistoryList #DashboardGroupHeader { color:#43344f; font-size:13px; font-weight:700; }
+
+#SurfTimelineTime { color:#786887; font-size:10px; font-weight:650; }
+#SurfTimelineMarker { color:#8554df; font-size:9px; }
+#SurfTimelineSurface {
+    min-height:56px;
+    background:qlineargradient(x1:0,y1:0,x2:1,y2:0,
+        stop:0 rgba(255,255,255,0.82), stop:1 rgba(250,247,255,0.74));
+    border:1px solid rgba(126,82,218,0.10);
+    border-radius:12px;
+}
+#SurfTimelineSurface:hover {
+    background:rgba(255,255,255,0.97);
+    border-color:rgba(126,82,218,0.24);
+}
+#SurfTimelineTitle { color:#33273f; font-size:12px; font-weight:750; }
+#SurfTimelineMeta { color:#867991; font-size:9px; }
+#SurfFavicon {
+    background:rgba(255,255,255,0.92);
+    border:1px solid rgba(126,82,218,0.15);
+    border-radius:11px;
+    color:#7954c3;
+    font-size:10px;
+    font-weight:800;
+}
+#SurfFavicon:hover { border-color:rgba(126,82,218,0.32); }
+#SurfFavicon[loaded="true"] { background:#ffffff; }
+#SurfSourceBadge {
+    background:rgba(129,80,223,0.09);
+    border:1px solid rgba(129,80,223,0.13);
+    border-radius:10px;
+}
+#SurfSourceBadge[category="视频"] { background:rgba(240,141,185,0.13); border-color:rgba(240,141,185,0.24); }
+#SurfSourceBadge[category="网页"] { background:rgba(86,169,223,0.12); border-color:rgba(86,169,223,0.23); }
+#SurfSourceBadge[category="知识"] { background:rgba(89,184,138,0.12); border-color:rgba(89,184,138,0.23); }
+#SurfSourceBadge[category="图片"] { background:rgba(107,197,214,0.12); border-color:rgba(107,197,214,0.23); }
+#SurfSourceBadge[category="技术"] { background:rgba(143,112,223,0.12); border-color:rgba(143,112,223,0.23); }
+#SurfSourcePill, #SurfTagPill {
+    min-height:23px;
+    padding:0 7px;
+    background:rgba(129,80,223,0.09);
+    border:1px solid rgba(129,80,223,0.08);
+    border-radius:8px;
+    color:#6f49bd;
+    font-size:9px;
+}
+#SurfSourcePill[category="视频"] { color:#c24c84; background:rgba(240,141,185,0.13); }
+#SurfSourcePill[category="网页"] { color:#397fae; background:rgba(86,169,223,0.12); }
+#SurfSourcePill[category="知识"] { color:#34855f; background:rgba(89,184,138,0.12); }
+
+#SurfFavoriteButton {
+    min-width:29px; max-width:29px; min-height:29px; max-height:29px;
+    padding:0; background:transparent; border:1px solid transparent;
+    border-radius:8px; color:#a99ac5; font-size:14px;
+}
+#SurfFavoriteButton:hover { background:rgba(129,80,223,0.09); color:#8150df; }
+#SurfFavoriteButton[active="true"] { color:#8150df; }
+#SurfHistoryPage #DashboardLoadMore {
+    min-height:32px;
+    background:rgba(255,255,255,0.56);
+    border:1px solid rgba(126,82,218,0.11);
+    border-radius:9px;
+    color:#7449c8;
+    font-size:10px;
+    font-weight:650;
+}
+#SurfHistoryPage #DashboardLoadMore:hover { background:#ffffff; border-color:rgba(126,82,218,0.24); }
+
+#SurfTagChip {
+    min-height:28px;
+    padding:0 7px;
+    background:rgba(139,91,224,0.08);
+    border:1px solid rgba(126,82,218,0.09);
+    border-radius:8px;
+    color:#654b86;
+    font-size:9px;
+}
+#SurfTagChip:hover { background:rgba(139,91,224,0.14); border-color:rgba(126,82,218,0.20); color:#7042c4; }
+#SurfLegendValue { color:#665374; font-size:10px; font-weight:700; }
+#SurfFavoriteRow {
+    min-height:30px;
+    padding:0 9px;
+    background:rgba(255,255,255,0.58);
+    border:1px solid rgba(126,82,218,0.08);
+    border-radius:8px;
+    color:#51405f;
+    text-align:left;
+    font-size:10px;
+}
+#SurfFavoriteRow:hover { background:#ffffff; border-color:rgba(126,82,218,0.19); color:#7042c4; }
+
+#SurfTagManagerDialog {
+    background:qlineargradient(x1:0,y1:0,x2:1,y2:1,
+        stop:0 #fffaff, stop:1 #f3ecff);
+}
+#SurfTagManagerDialog #SurfTagList {
+    background:rgba(255,255,255,0.74);
+    border:1px solid rgba(126,82,218,0.13);
+    border-radius:11px;
+    outline:none;
+}
+#SurfTagManagerDialog #SurfTagList::item { border:none; margin:1px 3px; }
+
+/* Reference-style type scale and spacing pass for the full-page dashboard. */
+#SurfHistoryPage {
+    font-family:"Microsoft YaHei UI", "Microsoft YaHei", "Source Han Sans SC", "Segoe UI", sans-serif;
+}
+#SurfHistoryPage #DashboardTitle {
+    color:#2d2242;
+    font-size:30px;
+    font-weight:800;
+}
+#SurfHistoryPage #DashboardSubtitle {
+    color:#756884;
+    font-size:12px;
+    font-weight:500;
+}
+#SurfHistoryPage #DashboardSectionTitle {
+    color:#3d2c50;
+    font-size:14px;
+    font-weight:750;
+}
+#SurfHistoryPage #DashboardStatCaption {
+    color:#746681;
+    font-size:11px;
+    font-weight:600;
+}
+#SurfHistoryPage #SurfStatCard {
+    min-height:76px;
+}
+#SurfHistoryPage #SurfStatValue {
+    color:#302342;
+    font-size:20px;
+    font-weight:750;
+}
+#SurfHistoryPage #SurfFilterCombo {
+    min-height:36px;
+    font-size:12px;
+}
+#SurfHistoryPage #SurfHistoryList #DashboardGroupHeader {
+    color:#443351;
+    font-size:14px;
+    font-weight:750;
+}
+#SurfHistoryPage #SurfTimelineTime {
+    color:#6e5d80;
+    font-size:11px;
+    font-weight:700;
+}
+#SurfHistoryPage #SurfTimelineMarker {
+    color:#8355dc;
+    font-size:10px;
+}
+#SurfHistoryPage #SurfTimelineSurface {
+    min-height:58px;
+    border-radius:13px;
+    border-color:rgba(126,82,218,0.14);
+}
+#SurfHistoryPage #SurfTimelineTitle {
+    color:#2f233e;
+    font-size:13px;
+    font-weight:750;
+}
+#SurfHistoryPage #SurfTimelineMeta {
+    color:#796b89;
+    font-size:10px;
+    font-weight:500;
+}
+#SurfHistoryPage #SurfFavicon {
+    border-radius:12px;
+    font-size:11px;
+}
+#SurfHistoryPage #SurfSourcePill {
+    min-width:52px;
+    max-width:52px;
+    min-height:28px;
+    max-height:28px;
+    padding:0;
+    border-radius:9px;
+    font-size:10px;
+    font-weight:600;
+}
+#SurfHistoryPage #SurfTagPill {
+    min-height:26px;
+    max-height:28px;
+    padding:0 9px;
+    border-radius:9px;
+    font-size:10px;
+    font-weight:600;
+}
+#SurfHistoryPage #SurfResultMeta {
+    min-height:28px;
+    max-height:28px;
+    background:transparent;
+    border:none;
+}
+#SurfHistoryPage #SurfResultIcon {
+    min-width:14px;
+    max-width:14px;
+    background:transparent;
+}
+#SurfHistoryPage #SurfResultCount {
+    color:#88799a;
+    font-size:10px;
+    font-weight:550;
+}
+#SurfHistoryPage #SurfFavoriteButton {
+    min-width:31px;
+    max-width:31px;
+    min-height:31px;
+    max-height:31px;
+    font-size:16px;
+}
+#SurfHistoryPage #SurfMoreButton {
+    min-width:31px;
+    max-width:31px;
+    min-height:31px;
+    max-height:31px;
+    padding:0;
+    background:transparent;
+    border:1px solid transparent;
+    border-radius:9px;
+}
+#SurfHistoryPage #SurfMoreButton:hover {
+    background:rgba(129,80,223,0.09);
+    border-color:rgba(126,82,218,0.12);
+}
+#SurfHistoryPage #SurfMoreButton:disabled {
+    background:transparent;
+    border-color:transparent;
+}
+#SurfRowMenu {
+    min-width:132px;
+    padding:5px;
+    background:rgba(255,253,255,0.98);
+    border:1px solid rgba(126,82,218,0.16);
+    border-radius:10px;
+    color:#4e405e;
+    font-size:11px;
+}
+#SurfRowMenu::item {
+    min-height:28px;
+    padding:4px 16px 4px 8px;
+    border-radius:7px;
+}
+#SurfRowMenu::item:selected {
+    color:#6f43c4;
+    background:rgba(129,80,223,0.10);
+}
+#SurfHistoryPage #DashboardLoadMore {
+    min-height:35px;
+    font-size:11px;
+}
+#SurfHistoryPage #SurfTagChip {
+    min-height:30px;
+    font-size:10px;
+    font-weight:600;
+}
+#SurfHistoryPage #SurfLegendValue {
+    color:#5e4b72;
+    font-size:11px;
+}
+#SurfHistoryPage #SurfFavoriteRow {
+    min-height:32px;
+    font-size:11px;
+}
+#SurfHistoryPage #SettingsTopBar #SettingsSearch {
+    font-size:12px;
+}

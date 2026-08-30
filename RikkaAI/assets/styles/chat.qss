@@ -1,0 +1,393 @@
+/* Native chat workspace. */
+#ChatPage, #MainSplitter, #ChatWorkspace, #ChatContent, #RightPanel,
+#CharacterPanel, #ChatWidget, #ChatScrollArea, #ChatScrollContent,
+#InputPanel, #ChatStatsGrid, #ChatOverlay, #ChatDragRegion {
+    background:transparent;
+    border:none;
+}
+
+#ChatTopBar {
+    background:rgba(255,255,255,0.88);
+    border:1px solid transparent;
+    border-radius:12px;
+}
+#ChatToolbarDivider {
+    background:rgba(96,71,128,0.12);
+    border:none;
+}
+#ChatGlobalSearch {
+    min-height:32px; padding:0 10px;
+    background:rgba(250,247,255,0.84);
+    border:1px solid rgba(120,86,174,0.16); border-radius:8px;
+    color:#3e3550; font-size:11px;
+}
+#ChatGlobalSearch:focus {
+    background:#ffffff; border-color:rgba(121,80,223,0.42);
+}
+#ChatTopAction {
+    background:rgba(246,240,253,0.82);
+    border:1px solid rgba(126,88,191,0.12); border-radius:8px;
+}
+#ChatWindowButton {
+    background:transparent; border:1px solid transparent; border-radius:8px;
+}
+#ChatTopAction:hover, #ChatWindowButton:hover {
+    background:rgba(237,227,250,0.96);
+    border-color:rgba(122,78,198,0.26);
+}
+#ChatWindowButton[danger="true"]:hover {
+    background:#fff0f3; border-color:#f2bdc9; color:#c64060;
+}
+#ChatTopAvatar {
+    background:transparent; border:1px solid rgba(255,255,255,0.82);
+    border-radius:14px;
+}
+#ChatTopStatus {
+    color:#3f3650; font-size:11px; font-weight:700;
+}
+
+#ChatInsightsPanel, #HomeOverviewPanel, #EmotionStatusPanel {
+    background:transparent;
+    border:none;
+}
+#EmotionStatusPanel {
+    background:qlineargradient(x1:0,y1:0,x2:1,y2:1,
+        stop:0 rgba(56,42,128,0.92), stop:0.55 rgba(94,62,190,0.88), stop:1 rgba(138,80,220,0.82));
+    border:1px solid rgba(219,190,255,0.68); border-radius:16px;
+}
+#EmotionStatusPanel[mood="happy"] { border-color:rgba(255,177,247,0.90); }
+#EmotionStatusPanel[mood="sad"] { border-color:rgba(137,174,255,0.78); }
+#EmotionStatusPanel[mood="angry"] { border-color:rgba(255,161,160,0.84); }
+#EmotionAvatar { background:transparent; border:none; }
+#EmotionPanelTitle { color:#ffffff; font-size:17px; font-weight:700; letter-spacing:1px; }
+#EmotionQuote { color:rgba(255,255,255,0.88); font-size:11px; font-style:italic; }
+#EmotionCharName { color:#ffffff; font-size:15px; font-weight:700; }
+#EmotionMoodPill {
+    padding:3px 12px; background:rgba(255,255,255,0.16);
+    border:1px solid rgba(255,255,255,0.38); border-radius:12px;
+    color:#ffffff; font-size:11px; font-weight:700;
+}
+#EmotionDetailsButton {
+    padding:4px 9px; background:rgba(255,255,255,0.10); border:1px solid rgba(255,255,255,0.30);
+    border-radius:10px; color:#ffffff; font-size:10px;
+}
+#EmotionDetailsButton:hover { background:rgba(255,255,255,0.22); }
+#EmotionStatCard {
+    background:rgba(255,255,255,0.10); border:1px solid rgba(255,255,255,0.14); border-radius:12px;
+}
+#EmotionWideCard {
+    background:rgba(255,255,255,0.13); border:1px solid rgba(255,255,255,0.16); border-radius:12px;
+}
+#EmotionStatLabel { color:rgba(255,255,255,0.92); font-size:11px; }
+#EmotionStatValue { color:#ffffff; font-size:10px; font-weight:700; }
+#EmotionMoodDots { color:#ffffff; font-size:12px; }
+#EmotionWideLabel { color:rgba(255,255,255,0.94); font-size:13px; font-weight:600; }
+#EmotionWideValue { color:#ffffff; font-size:15px; font-weight:800; }
+#EmotionMetricBar {
+    background:rgba(27,21,87,0.50); border:none; border-radius:4px;
+}
+#EmotionMetricBar::chunk {
+    background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #c38cff, stop:0.5 #f3b5ff, stop:1 #ffffff);
+    border-radius:4px;
+}
+#EmotionMetricBar:disabled { background:rgba(27,21,87,0.30); }
+#EmotionMetricBar:disabled::chunk { background:rgba(255,255,255,0.16); }
+#EmotionDetailsTitle { color:#45317c; font-size:17px; font-weight:700; }
+#EmotionDetailsNote, #EmotionDetailsFootnote { color:#6d6280; font-size:11px; }
+#EmotionDetailsDialog QLabel { color:#514568; font-size:11px; }
+#EmotionSettingsDialog { background:#faf7ff; }
+#EmotionSettingsDialog QLabel { color:#514568; font-size:12px; }
+#EmotionSettingsDialog QSpinBox, #EmotionSettingsDialog QDoubleSpinBox,
+#EmotionSettingsDialog QComboBox {
+    background:#ffffff; border:1px solid rgba(121,80,223,0.35); border-radius:8px;
+    padding:4px 8px; color:#3e3550; font-size:12px; min-height:22px;
+}
+#EmotionSettingsDialog QSpinBox:focus, #EmotionSettingsDialog QDoubleSpinBox:focus,
+#EmotionSettingsDialog QComboBox:focus { border-color:#7950df; }
+#EmotionSettingsDialog QSpinBox:disabled, #EmotionSettingsDialog QDoubleSpinBox:disabled {
+    background:#f1edf8; color:#a49dba; border-color:rgba(121,80,223,0.15);
+}
+#EmotionSettingsDialog QPushButton#DashboardPrimaryButton {
+    background:#7950df; color:#ffffff; border:none; border-radius:8px; padding:7px 20px; font-weight:700;
+}
+#EmotionSettingsDialog QPushButton#DashboardPrimaryButton:hover { background:#8a63ea; }
+#EmotionSettingsDialog QPushButton#DashboardSecondaryButton {
+    background:#f1edf8; color:#6d6280; border:1px solid rgba(121,80,223,0.25);
+    border-radius:8px; padding:7px 16px;
+}
+#EmotionLockDialog { background:#faf7ff; }
+#EmotionLockDialog QLabel { color:#514568; font-size:12px; }
+#EmotionLockDialog QCheckBox { color:#3e3550; font-size:12px; spacing:8px; }
+#EmotionLockDialog QCheckBox::indicator {
+    width:16px; height:16px; border:1px solid rgba(121,80,223,0.45);
+    border-radius:4px; background:#ffffff;
+}
+#EmotionLockDialog QCheckBox::indicator:checked {
+    background:#7950df; border-color:#7950df;
+}
+#EmotionLockDialog QPushButton#DashboardPrimaryButton {
+    background:#7950df; color:#ffffff; border:none; border-radius:8px; padding:7px 20px; font-weight:700;
+}
+#EmotionLockDialog QPushButton#DashboardPrimaryButton:hover { background:#8a63ea; }
+#EmotionLockDialog QPushButton#DashboardSecondaryButton {
+    background:#f1edf8; color:#6d6280; border:1px solid rgba(121,80,223,0.25);
+    border-radius:8px; padding:7px 16px;
+}
+#ChatInsightsTitle {
+    color:#302743; font-size:14px; font-weight:700;
+}
+#ChatInsightsPeriod, #ChatTrendUnit {
+    padding:3px 7px; background:rgba(255,255,255,0.68);
+    border:1px solid rgba(126,91,180,0.12); border-radius:6px;
+    color:#746684; font-size:9px;
+}
+#ChatStatCard, #ChatTrendCard, #ChatInsightSummary {
+    background:rgba(255,255,255,0.86);
+    border:1px solid rgba(255,255,255,0.92);
+    border-radius:9px;
+}
+#ChatStatTitle {
+    color:#6e637b; font-size:9px;
+}
+#ChatStatValue {
+    color:#2c2340; font-size:19px; font-weight:700;
+}
+#ChatStatCaption {
+    color:#9a8fa5; font-size:8px;
+}
+#ChatTrendTitle {
+    color:#3c324e; font-size:11px; font-weight:700;
+}
+#ChatInsightRow {
+    color:#665a75; font-size:10px;
+    padding:2px 0;
+}
+
+#ChatNavSidebar {
+    background:qlineargradient(x1:0,y1:0,x2:0,y2:1,
+        stop:0 rgba(252,249,255,0.54), stop:1 rgba(245,239,253,0.40));
+    border:1px solid rgba(255,255,255,0.48);
+    border-left:none;
+    border-radius:0 12px 12px 0;
+}
+
+#ChatSessionPanel {
+    background:rgba(252,250,255,0.82);
+    border:1px solid transparent;
+    border-radius:12px;
+}
+
+#ChatBrand { color:#342a52; font-size:16px; font-weight:700; }
+
+#ChatNavButton {
+    min-width:98px; padding:0 11px; background:transparent;
+    border:1px solid transparent; border-radius:8px;
+    color:#4b425f; font-size:13px; text-align:left;
+}
+#ChatNavButton:hover { background:rgba(130,92,221,0.09); color:#6d45c8; }
+#ChatNavButton[active="true"] {
+    background:qlineargradient(x1:0,y1:0,x2:1,y2:0,
+        stop:0 rgba(129,80,228,0.18), stop:1 rgba(199,174,247,0.27));
+    border:1px solid rgba(130,91,215,0.10); border-left:4px solid #ee6fae;
+    color:#6840c5; font-weight:700; padding-left:8px;
+}
+
+#SessionSearch {
+    min-height:34px; padding:0 10px; background:rgba(255,255,255,0.72);
+    border:1px solid rgba(112,84,156,0.12); border-radius:8px;
+    color:#423a56; font-size:12px;
+}
+#SessionSearch:focus { background:rgba(255,255,255,0.92); border-color:rgba(122,78,216,0.34); }
+
+#NewSessionButton {
+    background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #a36cf0, stop:1 #7444dd);
+    border:none; border-radius:8px; color:#ffffff; font-size:12px; font-weight:700;
+}
+#NewSessionButton:hover {
+    background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #ac7af2, stop:1 #8254e2);
+}
+
+#SessionFilter {
+    min-width:38px; padding:0 7px; background:transparent; border:none;
+    border-radius:7px; color:#756d83; font-size:10px;
+}
+#SessionFilter[active="true"], #SessionFilter:hover {
+    background:rgba(129,91,213,0.10); color:#7049c4;
+}
+
+#SessionList { background:transparent; border:none; outline:none; }
+#SessionList::item {
+    margin:2px 0; border:1px solid transparent; border-radius:9px;
+}
+#SessionList::item:hover {
+    background:rgba(255,255,255,0.52); border-color:rgba(255,255,255,0.68);
+}
+#SessionList::item:selected {
+    background:rgba(242,235,255,0.82); border-color:rgba(145,101,226,0.16);
+}
+
+#SessionItemCard { background:transparent; }
+#SessionTitle { color:#352b46; font-size:12px; font-weight:700; }
+#SessionSummary { color:#746b81; font-size:10px; }
+#SessionTime { color:#71647f; font-size:10px; }
+
+#MessageRow { background:transparent; border:none; }
+#AIBubble {
+    background:rgba(255,255,255,0.88);
+    border:1px solid rgba(255,255,255,0.92); border-radius:11px;
+}
+#UserBubble {
+    background:qlineargradient(x1:0,y1:0,x2:1,y2:1,
+        stop:0 rgba(169,120,243,0.94), stop:1 rgba(116,73,220,0.94));
+    border:1px solid rgba(255,255,255,0.34); border-radius:11px;
+}
+#AIBubbleMeta { color:#665c73; font-size:11px; font-weight:700; }
+#UserBubbleMeta { color:rgba(255,255,255,0.88); font-size:11px; font-weight:700; }
+#AIBubbleText {
+    background:transparent; border:none; color:#2d2639; font-size:14px;
+}
+#UserBubbleText {
+    background:transparent; border:none; color:#ffffff; font-size:14px;
+}
+#SystemBubble {
+    background:rgba(80,64,120,0.10);
+    border:1px solid rgba(126,82,218,0.18); border-radius:9px;
+}
+#SystemBubbleMeta { color:#8d69e0; font-size:10px; font-weight:700; }
+#SystemBubbleText {
+    background:transparent; border:none; color:#ffd700; font-size:12px;
+}
+#ContactBubble {
+    background:rgba(238,231,252,0.95);
+    border:1px solid rgba(165,135,215,0.40); border-radius:11px;
+}
+#ContactBubbleMeta { color:#7a6a92; font-size:11px; font-weight:700; }
+#ContactBubbleText {
+    background:transparent; border:none; color:#3a3350; font-size:14px;
+}
+#BubbleAvatar {
+    background:transparent; border:2px solid rgba(255,255,255,0.76); border-radius:19px;
+}
+#BubbleImage {
+    padding:4px; background:rgba(255,255,255,0.45);
+    border:1px solid rgba(255,255,255,0.72); border-radius:8px;
+}
+#VoiceBubblePlay {
+    background:rgba(169,120,243,0.16); border:1px solid rgba(169,120,243,0.45);
+    border-radius:17px; color:#7c4ee0; font-size:15px; font-weight:700;
+}
+#VoiceBubblePlay:hover { background:rgba(169,120,243,0.30); }
+#VoiceBubblePlay:pressed { background:rgba(169,120,243,0.42); }
+#VoiceBubbleMeta { color:#8a8494; font-size:12px; font-weight:700; }
+#VoiceBubbleTranslation { color:#8a8494; font-size:12px; }
+
+
+#InputComposer {
+    background:qlineargradient(x1:0,y1:0,x2:0,y2:1,
+        stop:0 rgba(255,255,255,0.42), stop:1 rgba(252,247,255,0.24));
+    border:1px solid rgba(255,255,255,0.72); border-radius:18px;
+}
+#InputField {
+    padding:8px 10px; background:rgba(255,255,255,0.20);
+    border:1px solid rgba(255,255,255,0.50); border-radius:14px;
+    color:#30273e; font-size:14px; selection-background-color:rgba(212,103,156,0.24);
+}
+#InputField:focus {
+    background:rgba(255,255,255,0.30); border:1px solid rgba(212,103,156,0.54);
+}
+#InputToolTray {
+    background:rgba(255,255,255,0.24);
+    border:1px solid rgba(255,255,255,0.42);
+    border-radius:15px;
+}
+#AttachmentToolButton { font-weight:700; }
+#InputToolButton {
+    min-width:0; max-width:16777215px; padding:0 6px; background:rgba(255,255,255,0.56);
+    border:1px solid rgba(255,255,255,0.58); border-radius:12px;
+    color:#564d63; font-size:10px; font-weight:650;
+}
+#InputToolButton:hover {
+    background:rgba(255,255,255,0.82); border-color:rgba(119,77,205,0.30); color:#6e47c5;
+}
+#InputToolButton:pressed {
+    background:rgba(225,211,250,0.90); border-color:rgba(119,77,205,0.42); color:#5b35af;
+}
+#InputToolButton:disabled {
+    background:rgba(235,231,240,0.56); border-color:rgba(120,110,140,0.12); color:#aaa1b3;
+}
+#InputToolButton[composerWidth="70"] { min-width:70px; max-width:70px; }
+#InputToolButton[composerWidth="82"] { min-width:82px; max-width:82px; }
+#InputToolButton[composerWidth="96"] { min-width:96px; max-width:96px; }
+#VoiceSvcButton[composerWidth="92"] { min-width:92px; max-width:92px; }
+#QQBridgeToolButton[state="connecting"] {
+    background:#fff5df; border-color:#efc778; color:#9a6817;
+}
+#QQBridgeToolButton[state="online"] {
+    background:#eaf9f1; border-color:#72c99c; color:#267c51; font-weight:700;
+}
+#VoiceToolButton[state="on"] {
+    background:#f0e8ff; border-color:#b394e8; color:#7a4fd0; font-weight:700;
+}
+#VoiceToolButton[state="off"] {
+    background:rgba(235,231,240,0.8); border-color:rgba(120,110,140,0.25); color:#a89fb5;
+}
+#VoiceToolButton[state="off"]:hover {
+    background:#e6e2ec; color:#7d7490;
+}
+#VoiceSvcButton {
+    padding:0 8px; background:rgba(247,243,253,0.74);
+    border:1px solid rgba(106,77,150,0.10); border-radius:7px;
+    color:#564d63; font-size:10px;
+}
+#VoiceSvcButton:hover {
+    background:#ffffff; border-color:rgba(119,77,205,0.24); color:#6e47c5;
+}
+#VoiceSvcButton[state="starting"] {
+    background:#fff5df; border-color:#efc778; color:#9a6817; font-weight:700;
+}
+#VoiceSvcButton[state="ready"] {
+    background:#eaf9f1; border-color:#72c99c; color:#267c51; font-weight:700;
+}
+#VoiceSvcButton[state="error"] {
+    background:#fff0f3; border-color:#f2bdc9; color:#c64060;
+}
+#ServiceProgress {
+    background:rgba(239,233,248,0.8); border:1px solid rgba(126,91,180,0.18);
+    border-radius:6px; text-align:center; font-size:10px; color:#6b5d7d;
+}
+#ServiceProgress::chunk {
+    background:qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #a36cf0, stop:1 #7444dd);
+    border-radius:5px;
+}
+#ComposerHint { color:#766d80; font-size:10px; padding-right:2px; }
+#SendButton {
+    min-width:58px; max-width:58px; min-height:52px; max-height:52px; padding:0;
+    background:qlineargradient(x1:0,y1:0,x2:1,y2:1,
+        stop:0 #e88eae, stop:0.52 #a684e4, stop:1 #6e69d9);
+    border:1px solid rgba(255,255,255,0.46); border-radius:16px;
+}
+#SendButton:hover {
+    background:qlineargradient(x1:0,y1:0,x2:1,y2:1,
+        stop:0 #ee9ab7, stop:0.52 #af90ea, stop:1 #7b76df);
+    border-color:rgba(255,255,255,0.62);
+}
+#SendButton:pressed {
+    background:#7e62cf; border-color:rgba(255,255,255,0.42);
+}
+#SendButton:disabled { background:#d8d1e4; border-color:transparent; }
+
+/* Voice Synthesizing Progress Bubble */
+#VoiceSynthProgress {
+    background: rgba(240, 235, 250, 0.90);
+    border: 1px solid rgba(138, 106, 193, 0.25);
+    border-radius: 3px;
+    text-align: center;
+}
+
+#VoiceSynthProgress::chunk {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 rgba(163, 108, 240, 0.90),
+        stop:0.5 rgba(116, 68, 221, 0.95),
+        stop:1 rgba(163, 108, 240, 0.90));
+    border-radius: 2px;
+}

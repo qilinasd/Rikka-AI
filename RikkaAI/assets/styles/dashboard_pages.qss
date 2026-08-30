@@ -1,0 +1,321 @@
+/* Shared history, memory, and settings dashboards. */
+#HistoryPage, #MemoryPage, #SettingsPage, #DashboardContent, #SettingsPages {
+    background:transparent;
+    border:none;
+    font-family:"Microsoft YaHei UI", "Source Han Sans SC", "Microsoft YaHei", sans-serif;
+}
+#HistoryPage #ChatTopBar,
+#SettingsTopBar {
+    background:rgba(255,255,255,0.88);
+    border:1px solid transparent;
+    border-radius:12px;
+}
+#DashboardGlassCard { background:rgba(253,251,255,0.90); border:1px solid rgba(255,255,255,0.94); border-radius:15px; }
+#DashboardTitleIcon { background:rgba(255,255,255,0.90); border:1px solid rgba(128,82,224,0.20); border-radius:13px; }
+#DashboardTitle { color:#2f2545; font-size:28px; font-weight:800; }
+#DashboardSubtitle, #DashboardMuted { color:#71657f; font-size:12px; }
+#DashboardSectionTitle { color:#382d49; font-size:15px; font-weight:700; }
+#DashboardTextButton { min-height:28px; background:transparent; border:none; color:#7044c9; font-size:12px; font-weight:600; padding:3px 7px; }
+#DashboardTextButton:hover { color:#8a4bd7; background:rgba(130,82,222,0.08); border-radius:8px; }
+
+#DashboardList, #SettingsNavList { background:transparent; border:none; outline:none; }
+#DashboardList::item { padding:0; margin:0; border-bottom:1px solid rgba(109,79,157,0.11); border-radius:0; color:#584d66; font-size:12px; }
+#DashboardList::item:hover { background:rgba(127,82,214,0.055); }
+#DashboardList::item:selected { background:rgba(130,83,222,0.10); }
+#DashboardGroupHeader { color:#554866; font-size:13px; font-weight:700; }
+#MemoryDayCard { background:rgba(255,255,255,0.60); border:1px solid rgba(126,82,218,0.14); border-radius:14px; }
+#MemoryDayHeader { background:transparent; border:none; border-bottom:1px solid rgba(126,82,218,0.10); border-radius:0; text-align:left; }
+#MemoryDayHeader:hover { background:rgba(126,82,218,0.06); }
+#MemoryDayTitle { color:#3a2e49; font-size:14px; font-weight:750; }
+#MemoryDayArrow { color:#8d69e0; font-size:12px; font-weight:700; }
+#MemoryDayBody { background:rgba(255,255,255,0.35); border-bottom-left-radius:14px; border-bottom-right-radius:14px; }
+#MemoryDayItem:hover { background:rgba(126,82,218,0.05); }
+#MemoryDayText { color:#4a3f58; font-size:12px; }
+#MemoryDayFav { color:#b9aed8; font-size:13px; }
+#MemoryDayFav:hover { color:#e8b23a; }
+#DashboardRowIcon { background:rgba(255,255,255,0.86); border:1px solid rgba(125,81,215,0.15); border-radius:11px; }
+#HistoryRowTitle { color:#2f243c; font-size:14px; font-weight:700; }
+#HistoryRowDetail { color:#62566f; font-size:12px; }
+#DashboardRowTitle { color:#33283f; font-size:13px; font-weight:700; }
+#DashboardRowDetail { color:#675b73; font-size:12px; }
+#DashboardRowMeta { color:#6f627d; font-size:11px; font-weight:500; }
+#DashboardPill { color:#6841b4; background:rgba(126,82,218,0.12); border:1px solid rgba(126,82,218,0.08); border-radius:9px; padding:3px 8px; font-size:11px; font-weight:600; }
+
+#DashboardSegment, #DashboardChip { min-height:32px; padding:0 15px; background:rgba(255,255,255,0.76); border:1px solid rgba(122,81,197,0.08); border-radius:10px; color:#5f536e; font-size:12px; }
+#DashboardSegment[active="true"], #DashboardChip[active="true"] { background:#8451df; color:white; font-weight:700; }
+#DashboardSegment:hover, #DashboardChip:hover { border-color:rgba(126,82,218,0.24); color:#7147c4; }
+#DashboardSecondaryButton, #DashboardPrimaryButton, #DashboardDangerButton { min-height:34px; padding:0 15px; border-radius:10px; font-size:12px; font-weight:600; }
+#DashboardSecondaryButton { background:rgba(255,255,255,0.86); border:1px solid rgba(126,86,200,0.18); color:#574b66; }
+#DashboardPrimaryButton {
+    background:qlineargradient(x1:0,y1:0,x2:1,y2:0,
+        stop:0 #7a4bd8, stop:1 #9a66e8);
+    border:1px solid rgba(226,196,128,0.55);
+    color:white;
+}
+#DashboardDangerButton { background:rgba(255,255,255,0.82); border:1px solid rgba(220,72,109,0.22); color:#c54164; }
+#DashboardSecondaryButton:hover { background:#ffffff; border-color:rgba(126,86,200,0.32); color:#7044c5; }
+#SettingsPage #DashboardSecondaryButton:disabled { background:rgba(255,255,255,0.42); border-color:rgba(126,86,200,0.08); color:#a69dac; }
+#DashboardPrimaryButton:hover {
+    background:qlineargradient(x1:0,y1:0,x2:1,y2:0,
+        stop:0 #8a58e6, stop:1 #a974f0);
+    border-color:rgba(238,206,140,0.75);
+}
+#DashboardDangerButton:hover { background:rgba(255,239,244,0.96); border-color:rgba(220,72,109,0.35); }
+#DashboardIconButton { min-width:32px; max-width:32px; min-height:32px; max-height:32px; background:transparent; border:none; border-radius:9px; }
+#DashboardIconButton:hover { background:rgba(125,80,214,0.10); }
+
+#DashboardStatTile, #MemoryOverviewTile { min-height:62px; background:rgba(255,255,255,0.72); border:1px solid rgba(126,82,218,0.08); border-radius:11px; }
+#DashboardStatCaption { color:#70647e; font-size:11px; }
+#DashboardStatValue { color:#2f2441; font-size:21px; font-weight:800; }
+#DashboardTags { color:#6841b4; background:rgba(255,255,255,0.66); border:1px solid rgba(126,82,218,0.08); border-radius:10px; padding:10px; font-size:12px; }
+#DashboardActionButton { min-height:44px; padding:0 8px; background:rgba(255,255,255,0.72); border:1px solid rgba(126,82,218,0.09); border-radius:10px; color:#574a64; font-size:12px; font-weight:600; }
+#DashboardActionButton:hover { background:#ffffff; border-color:rgba(126,82,218,0.22); color:#7040c7; }
+#DashboardNavButton { min-height:42px; padding:0 11px; text-align:left; background:transparent; border:none; border-radius:9px; color:#51455e; font-size:12px; font-weight:500; }
+#DashboardNavButton:hover { background:rgba(130,82,222,0.09); color:#7248cc; }
+
+#SettingsTopBar #SettingsSearch {
+    min-height:32px; padding:0 10px;
+    background:rgba(250,247,255,0.84);
+    border:1px solid rgba(120,86,174,0.16); border-radius:8px;
+    color:#3e3550; font-size:11px;
+}
+#SettingsTopBar #SettingsSearch:focus { background:#ffffff; border-color:rgba(121,80,223,0.42); }
+#SettingsSearchShortcut { background:transparent; color:#8a67d2; font-size:10px; }
+#SettingsTopBar #ChatTopAction {
+    background:rgba(246,240,253,0.82);
+    border:1px solid rgba(126,88,191,0.12); border-radius:8px;
+}
+#SettingsTopBar #ChatTopAction[active="true"] { background:rgba(134,82,224,0.10); }
+#SettingsTopBar #ChatTopAction:hover,
+#SettingsTopBar #ChatWindowButton:hover { background:rgba(126,82,218,0.11); border:none; }
+#SettingsTopBar #ChatWindowButton { background:transparent; border:none; border-radius:8px; }
+#SettingsTopBar #ChatToolbarDivider { background:rgba(99,71,132,0.13); border:none; }
+
+#SettingsNavPanel {
+    background:qlineargradient(x1:0,y1:0,x2:1,y2:1,
+        stop:0 rgba(250,246,255,0.82), stop:1 rgba(240,231,255,0.66));
+    border:1px solid rgba(190,150,235,0.35);
+    border-radius:18px;
+}
+#SettingsMainPanel {
+    background:qlineargradient(x1:0,y1:0,x2:1,y2:1,
+        stop:0 rgba(255,253,255,0.82), stop:1 rgba(248,243,255,0.70));
+    border:1px solid rgba(255,255,255,0.72);
+    border-radius:18px;
+}
+#SettingsPage #DashboardTitleIcon {
+    background:rgba(255,255,255,0.76);
+    border:2px solid rgba(137,83,225,0.22); border-radius:24px;
+}
+#SettingsNavList::item { min-height:58px; margin:3px 0; padding:0 9px; border-radius:12px; color:#51465e; }
+#SettingsNavList::item:hover { background:rgba(133,86,222,0.09); }
+#SettingsNavList::item:selected {
+    background:qlineargradient(x1:0,y1:0,x2:1,y2:0,
+        stop:0 rgba(124,66,214,0.94), stop:1 rgba(186,108,232,0.72));
+    border-left:3px solid #e8c77e;
+}
+#SettingsPageTitle { color:#5f36b8; font-size:22px; font-weight:800; }
+#SettingsPageSubtitle { color:#7a6d8c; font-size:12px; }
+#SettingsSubheading { color:#3d304b; font-size:13px; font-weight:750; min-height:24px; }
+#SettingsSubheading[compact="true"] { min-height:19px; max-height:19px; }
+#SettingsNavIcon { background:rgba(255,255,255,0.58); border-radius:9px; }
+#SettingsNavTitle { color:#3a2e49; font-size:13px; font-weight:700; }
+#SettingsNavDetail { color:#8c819d; font-size:10px; }
+#SettingsNavIcon[active="true"] { background:rgba(255,255,255,0.16); }
+#SettingsNavTitle[active="true"] { color:#ffffff; }
+#SettingsNavDetail[active="true"] { color:rgba(255,255,255,0.86); }
+#SettingsFieldLabel { color:#45384f; font-size:13px; font-weight:600; }
+#SettingsFieldValue { min-width:48px; color:#7042c4; font-size:12px; font-weight:700; }
+#SettingsPage #SettingsOptionCard {
+    background:qlineargradient(x1:0,y1:0,x2:0,y2:1,
+        stop:0 rgba(255,255,255,0.72), stop:1 rgba(248,243,255,0.58));
+    border:1px solid rgba(150,105,225,0.16);
+    border-radius:14px;
+    padding:6px;
+}
+#SettingsStorageMetric { color:#4f435f; font-size:11px; }
+#SettingsPage #DashboardActionButton { min-height:68px; padding:4px 2px; background:rgba(255,255,255,0.58); border:1px solid rgba(126,82,218,0.10); border-radius:10px; color:#574a64; font-size:10px; font-weight:600; }
+#SettingsPage #DashboardActionButton:hover { background:rgba(255,255,255,0.84); border-color:rgba(126,82,218,0.24); color:#7040c7; }
+#SettingsPage QCheckBox { min-height:38px; color:#4e4259; font-size:12px; spacing:10px; }
+#SettingsPage QCheckBox::indicator { width:30px; height:16px; border-radius:8px; background:#ddd4e7; border:none; }
+#SettingsPage QCheckBox::indicator:checked { background:#8151df; }
+#SettingsToggle { min-width:38px; max-width:38px; min-height:20px; max-height:20px; padding:0; background:transparent; border:none; }
+#SettingsPage QSlider { min-height:24px; }
+#SettingsPage QSlider::groove:horizontal { height:6px; background:rgba(110,77,160,0.15); border-radius:3px; }
+#SettingsPage QSlider::sub-page:horizontal { background:#8554df; border-radius:2px; }
+#SettingsPage QSlider::handle:horizontal { background:#8554df; width:16px; margin:-5px 0; border-radius:8px; }
+#SettingsPage QSpinBox { min-height:32px; min-width:150px; background:rgba(255,255,255,0.86); border:1px solid rgba(117,80,185,0.18); border-radius:8px; padding:0 9px; font-size:12px; }
+#SettingsPage QDoubleSpinBox { min-height:32px; min-width:120px; background:rgba(255,255,255,0.86); border:1px solid rgba(117,80,185,0.18); border-radius:8px; padding:0 9px; font-size:12px; }
+#SettingsPage QComboBox { min-height:32px; min-width:150px; background:rgba(255,255,255,0.86); border:1px solid rgba(117,80,185,0.18); border-radius:8px; padding:0 9px; font-size:12px; color:#45384f; }
+#SettingsPage QComboBox::drop-down { border:none; width:22px; }
+#SettingsPage QComboBox QAbstractItemView { background:#ffffff; border:1px solid rgba(126,82,218,0.18); border-radius:8px; selection-background-color:#f5ebff; selection-color:#7042c4; }
+#SettingsPage QLineEdit { min-height:32px; background:rgba(255,255,255,0.86); border:1px solid rgba(117,80,185,0.18); border-radius:8px; padding:0 9px; font-size:12px; color:#45384f; }
+#SettingsPage QLineEdit:focus, #SettingsPage QComboBox:focus, #SettingsPage QSpinBox:focus, #SettingsPage QDoubleSpinBox:focus { border-color:#8554df; background:#ffffff; }
+#SettingsPage QTextEdit { background:rgba(255,255,255,0.86); border:1px solid rgba(117,80,185,0.18); border-radius:8px; padding:8px 10px; font-size:12px; color:#45384f; }
+#SettingsPage QTextEdit:focus { border-color:#8554df; background:#ffffff; }
+#SettingsPage QScrollArea { background:transparent; border:none; }
+#SettingsPage QScrollArea > QWidget > QWidget { background:transparent; }
+#SettingsPage #SettingsPresetList { background:rgba(255,255,255,0.55); border:1px solid rgba(126,82,218,0.12); border-radius:10px; padding:6px; outline:none; }
+#SettingsPage #SettingsPresetList::item { padding:0; margin:0; border:none; background:transparent; }
+#SettingsPage #SettingsPresetList::item:selected { background:transparent; border:none; }
+#SettingsPage #SettingsPresetRow { background:rgba(255,255,255,0.68); border:1px solid rgba(126,82,218,0.10); border-radius:10px; }
+#SettingsPage #SettingsPresetRow:hover { border-color:rgba(126,82,218,0.26); }
+#SettingsPage #SettingsPresetRow[selected="true"] { border-color:#8554df; }
+#SettingsPage #SettingsPresetRow #DashboardRowTitle { font-size:14px; }
+#SettingsPage #QQWhitelistList { background:rgba(255,255,255,0.55); border:1px solid rgba(126,82,218,0.12); border-radius:10px; padding:5px; outline:none; }
+#SettingsPage #QQWhitelistList::item { padding:0; margin:0; border:none; background:transparent; }
+#SettingsPage #QQWhitelistRow { background:rgba(255,255,255,0.68); border:1px solid rgba(126,82,218,0.10); border-radius:8px; }
+#SettingsPage #QQWhitelistRow:hover { border-color:rgba(126,82,218,0.28); background:rgba(255,255,255,0.86); }
+#SettingsPage #QQWhitelistNumber { color:#4f425d; font-size:12px; font-weight:650; }
+#SettingsPage #QQWhitelistDeleteButton { min-width:28px; max-width:28px; min-height:28px; max-height:28px; background:transparent; border:none; border-radius:8px; }
+#SettingsPage #QQWhitelistDeleteButton:hover { background:rgba(220,72,109,0.14); }
+#SettingsPage #QQWhitelistList QScrollBar:vertical { width:8px; margin:5px 2px 5px 0; background:transparent; }
+#SettingsPage #QQWhitelistList QScrollBar::handle:vertical { min-height:24px; background:rgba(126,82,218,0.38); border-radius:4px; }
+#SettingsPage #QQWhitelistList QScrollBar::handle:vertical:hover { background:rgba(126,82,218,0.62); }
+#SettingsPage #QQWhitelistList QScrollBar::add-line:vertical, #SettingsPage #QQWhitelistList QScrollBar::sub-line:vertical { height:0; }
+
+/* Settings reference layout: a quiet two-column control surface over the
+   Sakura Lake artwork — 六花风格的紫罗兰玻璃 + 金瞳点缀。 */
+#SettingsNavPromo {
+    background:qlineargradient(x1:0,y1:0,x2:1,y2:1,
+        stop:0 rgba(89,54,176,0.78), stop:0.55 rgba(126,82,210,0.62), stop:1 rgba(197,140,228,0.52));
+    border:1px solid rgba(255,255,255,0.55);
+    border-radius:14px;
+}
+#SettingsPromoTitle { color:#fff6e6; font-size:12px; font-weight:800; }
+#SettingsPromoDetail { color:rgba(255,248,235,0.92); font-size:10px; line-height:1.55; }
+#SettingsPageDivider {
+    background:qlineargradient(x1:0,y1:0,x2:1,y2:0,
+        stop:0 rgba(150,105,225,0.0), stop:0.3 rgba(150,105,225,0.45),
+        stop:0.7 rgba(224,186,120,0.40), stop:1 rgba(224,186,120,0.0));
+    border:none;
+}
+#SettingsThemeCard {
+    background:rgba(255,255,255,0.70);
+    border:1px solid rgba(125,84,202,0.16);
+    border-radius:12px;
+}
+#SettingsThemeCard { color:#52455f; }
+#SettingsThemeCard[selected="true"] {
+    background:rgba(146,93,231,0.13);
+    border:2px solid #8b5ae1;
+}
+#SettingsThemeCard:hover {
+    background:rgba(255,255,255,0.86);
+    border-color:rgba(125,84,202,0.30);
+}
+#SettingsChoiceTitle { color:#4f425d; font-size:11px; font-weight:700; }
+#SettingsChoiceDetail { color:#81748f; font-size:9px; }
+#SettingsChoiceCheck { color:#ffffff; background:#8554df; border-radius:10px; font-size:12px; font-weight:700; }
+#SettingsThemeCard[selected="true"] #SettingsChoiceTitle { color:#7042c4; }
+#SettingsEffectCard {
+    background:rgba(255,255,255,0.66);
+    border:1px solid rgba(126,82,218,0.12);
+    border-radius:13px;
+}
+#SettingsEffectIcon { background:rgba(132,82,224,0.08); border-radius:13px; }
+#SettingsEffectCard:hover { background:rgba(255,255,255,0.78); border-color:rgba(126,82,218,0.22); }
+#SettingsEffectDetail { color:#8c819d; font-size:9px; line-height:1.35; }
+
+/* 冲浪记录页 */
+#SurfHistoryList { background:transparent; border:none; outline:none; }
+#SurfHistoryList::item { background:transparent; border:none; margin:4px 0; }
+#SurfHistoryList::item:selected { background:transparent; }
+#SurfStatCard {
+    background:rgba(255,255,255,0.72);
+    border:1px solid rgba(137,83,225,0.16);
+    border-radius:14px;
+}
+#SurfStatValue { color:#7042c4; font-size:22px; font-weight:800; }
+#SurfStatIcon { color:#8d69e0; font-size:16px; }
+#SurfHistoryPage #DashboardSegmentCombo {
+    min-height:32px;
+    min-width:120px;
+    background:rgba(255,255,255,0.86);
+    border:1px solid rgba(117,80,185,0.18);
+    border-radius:9px;
+    padding:0 9px;
+    font-size:12px;
+    color:#45384f;
+}
+
+/* Sleep-time Compute Model Preset Cards */
+#ModelPresetScroll {
+    background: transparent;
+    border: none;
+}
+
+#ModelPresetList {
+    background: transparent;
+    border: none;
+}
+
+#ModelPresetCard {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 rgba(255, 255, 255, 0.95),
+        stop:1 rgba(250, 247, 255, 0.90));
+    border: 1px solid rgba(138, 106, 193, 0.20);
+    border-radius: 10px;
+}
+
+#ModelPresetCard:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 rgba(255, 255, 255, 1.0),
+        stop:1 rgba(248, 243, 255, 0.95));
+    border-color: rgba(138, 106, 193, 0.35);
+}
+
+#ModelPresetCard[current="true"] {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 rgba(240, 230, 255, 0.95),
+        stop:1 rgba(230, 215, 255, 0.90));
+    border: 2px solid rgba(138, 106, 193, 0.60);
+}
+
+#PresetName {
+    color: #3c2f5c;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+#PresetDesc {
+    color: #6e5f8a;
+    font-size: 12px;
+}
+
+#PresetCost {
+    color: #9a8fb5;
+    font-size: 11px;
+}
+
+#PresetUseButton {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 rgba(138, 106, 193, 0.88),
+        stop:1 rgba(116, 82, 180, 0.90));
+    border: 1px solid rgba(255, 255, 255, 0.30);
+    border-radius: 6px;
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+#PresetUseButton:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 rgba(150, 118, 210, 0.95),
+        stop:1 rgba(130, 98, 195, 0.95));
+    border-color: rgba(255, 255, 255, 0.45);
+}
+
+#PresetUseButton:pressed {
+    background: rgba(106, 74, 168, 0.95);
+}
+
+#PresetCurrent {
+    color: #5a8f47;
+    font-size: 13px;
+    font-weight: 600;
+    background: rgba(200, 240, 190, 0.50);
+    border: 1px solid rgba(138, 200, 120, 0.40);
+    border-radius: 6px;
+    padding: 6px 12px;
+}

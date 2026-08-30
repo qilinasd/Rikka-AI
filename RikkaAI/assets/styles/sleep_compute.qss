@@ -1,0 +1,320 @@
+/* Sleep-time Compute settings surface */
+
+#SleepComputeSettings {
+    background:transparent;
+    border:none;
+    font-family:"Microsoft YaHei UI", "Source Han Sans SC", "Microsoft YaHei", sans-serif;
+}
+
+#SleepPageMoon { background:transparent; border:none; }
+
+#SleepSectionCard {
+    background:qlineargradient(x1:0,y1:0,x2:1,y2:1,
+        stop:0 rgba(255,255,255,0.72), stop:1 rgba(248,242,255,0.58));
+    border:1px solid rgba(137,88,218,0.16);
+    border-radius:13px;
+}
+
+#SleepSectionCard[section="basic"] {
+    background:qlineargradient(x1:0,y1:0,x2:1,y2:1,
+        stop:0 rgba(255,255,255,0.78), stop:0.72 rgba(250,245,255,0.63),
+        stop:1 rgba(241,225,255,0.52));
+}
+
+#SleepSectionIcon {
+    background:rgba(132,82,224,0.09);
+    border:1px solid rgba(132,82,224,0.08);
+    border-radius:7px;
+}
+
+#SleepSectionTitle {
+    color:#3c2f50;
+    font-size:13px;
+    font-weight:750;
+}
+
+#SleepPetalDecoration { background:transparent; border:none; }
+
+#SleepFieldTitle {
+    color:#493b59;
+    font-size:11px;
+    font-weight:650;
+}
+
+#SleepFieldHint {
+    color:#8a7c9b;
+    font-size:9px;
+}
+
+#SleepFieldDot {
+    color:#8653df;
+    background:transparent;
+    font-size:18px;
+    font-weight:800;
+}
+
+#SleepHairline {
+    background:rgba(128,84,199,0.10);
+    border:none;
+}
+
+#SleepEnabledStatus {
+    min-width:42px;
+    color:#a091ad;
+    font-size:9px;
+    font-weight:650;
+}
+
+#SleepEnabledStatus[enabled="true"] { color:#7546c9; }
+
+#SettingsPage #SleepTimeEdit,
+#SettingsPage #SleepDaysSpin {
+    min-width:132px;
+    max-width:132px;
+    min-height:30px;
+    max-height:30px;
+    padding:0 9px;
+    color:#513e6d;
+    font-size:11px;
+    font-weight:650;
+    background:rgba(255,255,255,0.84);
+    border:1px solid rgba(124,79,204,0.16);
+    border-radius:8px;
+}
+
+#SettingsPage #SleepTimeEdit:focus,
+#SettingsPage #SleepDaysSpin:focus {
+    background:#ffffff;
+    border-color:#8755df;
+}
+
+#SettingsPage #SleepTimeEdit:disabled,
+#SettingsPage #SleepDaysSpin:disabled {
+    color:#aaa1b3;
+    background:rgba(245,242,248,0.55);
+    border-color:rgba(126,82,218,0.07);
+}
+
+#ModelPresetList {
+    background:qlineargradient(x1:0,y1:0,x2:0,y2:1,
+        stop:0 rgba(255,255,255,0.52), stop:1 rgba(250,246,255,0.34));
+    border:1px solid rgba(126,82,218,0.12);
+    border-radius:10px;
+    outline:none;
+    padding:7px;
+}
+
+#ModelPresetList::item {
+    background:transparent;
+    border:none;
+    margin:0;
+    padding:0;
+}
+
+#ModelPresetList::item:selected,
+#ModelPresetList::item:hover { background:transparent; border:none; }
+
+#ModelPresetList QScrollBar:vertical {
+    width:6px;
+    margin:2px 0;
+    background:transparent;
+}
+
+#ModelPresetList QScrollBar::handle:vertical {
+    min-height:20px;
+    background:rgba(129,80,219,0.30);
+    border-radius:3px;
+}
+
+#ModelPresetList QScrollBar::handle:vertical:hover {
+    background:rgba(129,80,219,0.48);
+}
+
+#ModelPresetList QScrollBar::add-line:vertical,
+#ModelPresetList QScrollBar::sub-line:vertical,
+#ModelPresetList QScrollBar::add-page:vertical,
+#ModelPresetList QScrollBar::sub-page:vertical {
+    width:0;
+    height:0;
+    background:transparent;
+}
+
+#ModelPresetCard {
+    background:qlineargradient(x1:0,y1:0,x2:1,y2:0,
+        stop:0 rgba(255,255,255,0.78), stop:1 rgba(252,248,255,0.70));
+    border:1px solid rgba(126,82,218,0.14);
+    border-radius:10px;
+}
+
+#ModelPresetCard:hover {
+    background:rgba(255,255,255,0.92);
+    border-color:rgba(126,82,218,0.28);
+}
+
+#ModelPresetCard[current="true"] {
+    background:qlineargradient(x1:0,y1:0,x2:1,y2:0,
+        stop:0 rgba(255,255,255,0.90), stop:1 rgba(240,228,255,0.76));
+    border:1px solid rgba(126,73,218,0.43);
+}
+
+#SleepModelArtwork {
+    background:qradialgradient(cx:0.5,cy:0.5,radius:0.65,
+        stop:0 rgba(156,112,236,0.16), stop:1 rgba(156,112,236,0));
+    border:none;
+}
+
+#PresetName {
+    color:#382a51;
+    font-size:12px;
+    font-weight:750;
+}
+
+#PresetDesc {
+    color:#746585;
+    font-size:9px;
+}
+
+#SleepRecommendBadge {
+    min-width:28px;
+    max-width:28px;
+    min-height:16px;
+    max-height:16px;
+    padding:0 4px;
+    color:#8b4ec7;
+    background:rgba(223,191,247,0.34);
+    border:1px solid rgba(168,99,222,0.13);
+    border-radius:7px;
+    font-size:8px;
+    font-weight:700;
+}
+
+#SleepModelChip {
+    min-height:17px;
+    max-height:17px;
+    padding:0 6px;
+    color:#765d9a;
+    background:rgba(245,239,255,0.78);
+    border:1px solid rgba(130,82,216,0.10);
+    border-radius:7px;
+    font-size:8px;
+}
+
+#PresetUseButton {
+    color:#7040c7;
+    background:rgba(255,255,255,0.80);
+    border:1px solid rgba(126,82,218,0.20);
+    border-radius:9px;
+    font-size:10px;
+    font-weight:700;
+}
+
+#PresetUseButton:hover {
+    color:#ffffff;
+    background:#8554df;
+    border-color:#8554df;
+}
+
+#PresetCurrent {
+    color:#7040c7;
+    background:rgba(139,84,225,0.12);
+    border:1px solid rgba(126,82,218,0.11);
+    border-radius:9px;
+    font-size:9px;
+    font-weight:700;
+}
+
+#SleepIconButton {
+    background:rgba(255,255,255,0.64);
+    border:1px solid rgba(126,82,218,0.13);
+    border-radius:9px;
+}
+
+#SleepIconButton:hover {
+    background:#ffffff;
+    border-color:rgba(126,82,218,0.30);
+}
+
+#SleepRunButton {
+    color:#ffffff;
+    background:qlineargradient(x1:0,y1:0,x2:1,y2:0,
+        stop:0 #7144d7, stop:0.58 #8956e4, stop:1 #a366e9);
+    border:1px solid rgba(255,255,255,0.40);
+    border-radius:9px;
+    font-size:10px;
+    font-weight:700;
+}
+
+#SleepRunButton:hover {
+    background:qlineargradient(x1:0,y1:0,x2:1,y2:0,
+        stop:0 #7d4ce3, stop:1 #af72ef);
+    border-color:rgba(255,255,255,0.62);
+}
+
+#SleepRunButton:pressed { background:#6d3fc7; }
+#SleepRunButton:disabled { color:#f3eff8; background:#bbb2c9; border-color:transparent; }
+
+#SleepProgress {
+    background:rgba(126,82,218,0.10);
+    border:none;
+    border-radius:2px;
+}
+
+#SleepProgress::chunk {
+    background:qlineargradient(x1:0,y1:0,x2:1,y2:0,
+        stop:0 #7c4bd7, stop:0.5 #c07aea, stop:1 #7c4bd7);
+    border-radius:2px;
+}
+
+#SleepRunStatus {
+    padding:5px 8px;
+    color:#6f5e7e;
+    background:rgba(255,255,255,0.48);
+    border:1px solid rgba(126,82,218,0.08);
+    border-radius:7px;
+    font-size:9px;
+}
+
+#SleepRunStatus[kind="success"] {
+    color:#4f785c;
+    background:rgba(226,247,231,0.68);
+    border-color:rgba(82,153,101,0.14);
+}
+
+#SleepRunStatus[kind="error"] {
+    color:#b54764;
+    background:rgba(255,235,241,0.72);
+    border-color:rgba(197,65,100,0.14);
+}
+
+#SleepSaveFeedback {
+    padding:4px 9px;
+    color:#6c5d7a;
+    background:rgba(255,255,255,0.58);
+    border:1px solid rgba(126,82,218,0.09);
+    border-radius:8px;
+    font-size:9px;
+}
+
+#SleepSaveFeedback[kind="success"] { color:#52775d; }
+
+#SleepModelDialog {
+    color:#45384f;
+    background:#f9f5ff;
+}
+
+#SleepDialogTitle {
+    color:#5f36b8;
+    font-size:18px;
+    font-weight:750;
+}
+
+#SleepModelDialog QLabel { color:#574a64; font-size:11px; }
+#SleepModelDialog QLineEdit {
+    min-height:34px;
+    padding:0 10px;
+    color:#45384f;
+    background:rgba(255,255,255,0.90);
+    border:1px solid rgba(117,80,185,0.20);
+    border-radius:8px;
+}
+#SleepModelDialog QLineEdit:focus { border-color:#8554df; background:#ffffff; }

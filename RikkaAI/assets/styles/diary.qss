@@ -1,0 +1,464 @@
+/* Diary workspace: light sakura glass, scoped to avoid affecting KnowledgePage. */
+#DiaryPage,
+#DiaryPage #DiaryContentRoot,
+#DiaryPage #DiaryInsights,
+#DiaryPage #DiaryDailyTab,
+#DiaryPage #DiaryPeriodTab,
+#DiaryPage #DiaryTimelineBody,
+#DiaryPage #DiaryTimelineRow {
+    background:transparent;
+    border:none;
+    color:#302449;
+    font-family:"Microsoft YaHei UI", "Source Han Sans SC", "Microsoft YaHei", sans-serif;
+}
+
+#DiaryPage #DiaryTitleIcon {
+    background:rgba(255,255,255,0.43);
+    border:1px solid rgba(126,83,205,0.14);
+    border-radius:18px;
+}
+#DiaryPage #DiaryTitle {
+    color:#25163f;
+    font-size:25px;
+    font-weight:800;
+}
+#DiaryPage #DiarySubtitle {
+    color:rgba(54,39,80,0.78);
+    font-size:12px;
+}
+#DiaryPage #DiaryPrimaryButton {
+    min-width:112px;
+    min-height:38px;
+    padding:0 17px;
+    color:#ffffff;
+    background:qlineargradient(x1:0,y1:0,x2:1,y2:0,
+        stop:0 #9b68ea, stop:1 #7b45db);
+    border:1px solid rgba(113,61,207,0.32);
+    border-radius:9px;
+    font-size:12px;
+    font-weight:700;
+}
+#DiaryPage #DiaryPrimaryButton:hover {
+    background:qlineargradient(x1:0,y1:0,x2:1,y2:0,
+        stop:0 #a879ef, stop:1 #8957e1);
+    border-color:rgba(104,53,197,0.48);
+}
+#DiaryPage #DiaryPrimaryButton:pressed { background:#7541ce; }
+#DiaryPage #DiaryPrimaryButton:focus { border:2px solid rgba(87,43,181,0.60); }
+
+/* Header search and window controls. */
+#DiaryPage #DiaryTopBarHost,
+#DiaryPage #ChatTopBar {
+    background:rgba(255,255,255,0.88);
+    border:1px solid transparent;
+    border-radius:12px;
+}
+#DiaryPage #ChatGlobalSearch {
+    min-height:32px;
+    padding:0 10px;
+    background:rgba(250,247,255,0.84);
+    border:1px solid rgba(120,86,174,0.16);
+    border-radius:8px;
+    color:#3e3550;
+    font-size:11px;
+}
+#DiaryPage #ChatGlobalSearch:focus {
+    background:rgba(255,255,255,0.92);
+    border-color:rgba(120,76,211,0.48);
+}
+#DiaryPage #ChatTopAction {
+    background:rgba(255,255,255,0.55);
+    border:1px solid rgba(119,78,187,0.12);
+    border-radius:9px;
+}
+#DiaryPage #ChatTopAction:hover,
+#DiaryPage #ChatWindowButton:hover {
+    background:rgba(239,228,255,0.92);
+    border-color:rgba(118,75,198,0.25);
+}
+#DiaryPage #ChatWindowButton {
+    background:transparent;
+    border:1px solid transparent;
+    border-radius:8px;
+}
+#DiaryPage #ChatWindowButton[danger="true"]:hover {
+    background:rgba(255,226,235,0.94);
+    border-color:rgba(205,91,126,0.30);
+}
+#DiaryPage #ChatToolbarDivider { background:rgba(104,72,157,0.17); }
+#DiaryPage #ChatTopStatus { color:#3b2d51; font-size:11px; font-weight:700; }
+
+/* Stat cards. */
+#DiaryPage #DiaryStatCard {
+    background:rgba(255,255,255,0.70);
+    border:1px solid rgba(125,86,193,0.11);
+    border-radius:12px;
+}
+#DiaryPage #DiaryStatCard:hover {
+    background:rgba(255,255,255,0.76);
+    border-color:rgba(128,83,210,0.23);
+}
+#DiaryPage #DiaryStatIcon {
+    background:rgba(239,230,255,0.74);
+    border:1px solid rgba(128,86,203,0.11);
+    border-radius:19px;
+}
+#DiaryPage #DiaryStatCaption {
+    color:#625474;
+    font-size:11px;
+}
+#DiaryPage #DiaryStatValue {
+    font-size:20px;
+    font-weight:800;
+}
+
+/* Tabs and the main diary surface. */
+#DiaryPage #DiaryTabs::pane {
+    background:rgba(255,255,255,0.68);
+    border:1px solid rgba(121,82,188,0.10);
+    border-radius:12px;
+    top:-1px;
+}
+#DiaryPage #DiaryTabs QTabBar::tab {
+    min-width:88px;
+    min-height:40px;
+    margin-right:8px;
+    padding:0 10px;
+    color:#615174;
+    background:rgba(255,255,255,0.34);
+    border:1px solid rgba(123,86,191,0.08);
+    border-top-left-radius:10px;
+    border-top-right-radius:10px;
+    font-size:13px;
+    font-weight:650;
+}
+#DiaryPage #DiaryTabs QTabBar::tab:hover:!selected {
+    color:#6e42c8;
+    background:rgba(248,243,255,0.78);
+}
+#DiaryPage #DiaryTabs QTabBar::tab:selected {
+    color:#7545d6;
+    background:rgba(255,255,255,0.82);
+    border-color:rgba(123,79,205,0.18);
+    border-bottom:3px solid #8c59e4;
+    font-weight:750;
+}
+
+#DiaryPage #DiaryDatePanel,
+#DiaryPage #DiaryTimelinePanel,
+#DiaryPage #DiarySideCard {
+    background:rgba(255,255,255,0.68);
+    border:1px solid rgba(118,79,185,0.10);
+    border-radius:10px;
+}
+#DiaryPage #DiaryTimelinePanel {
+    background:rgba(255,255,255,0.54);
+}
+
+#DiaryPage #DiaryDateSearch {
+    min-height:34px;
+    padding:0 10px;
+    background:rgba(255,255,255,0.62);
+    border:1px solid rgba(124,84,194,0.12);
+    border-radius:8px;
+    color:#4f4065;
+    font-size:12px;
+}
+#DiaryPage #DiaryDateSearch:focus {
+    background:rgba(255,255,255,0.91);
+    border-color:rgba(123,77,211,0.42);
+}
+#DiaryPage #DiaryList,
+#DiaryPage #DiaryPeriodList {
+    background:transparent;
+    border:none;
+    outline:none;
+    padding:0;
+    color:#4e3e64;
+}
+#DiaryPage #DiaryList::item,
+#DiaryPage #DiaryPeriodList::item {
+    margin:3px 0;
+    padding:0 8px;
+    background:rgba(255,255,255,0.25);
+    border:1px solid rgba(121,82,187,0.08);
+    border-radius:8px;
+    color:#59486f;
+    font-size:12px;
+}
+#DiaryPage #DiaryList::item:hover,
+#DiaryPage #DiaryPeriodList::item:hover {
+    background:rgba(245,236,255,0.72);
+    border-color:rgba(125,81,207,0.19);
+}
+#DiaryPage #DiaryList::item:selected,
+#DiaryPage #DiaryPeriodList::item:selected {
+    color:#6540b8;
+    background:qlineargradient(x1:0,y1:0,x2:1,y2:0,
+        stop:0 rgba(226,210,255,0.92), stop:1 rgba(241,232,255,0.72));
+    border:1px solid rgba(131,83,223,0.42);
+}
+#DiaryPage #DiaryDateItemText { color:#59456f; font-size:12px; font-weight:600; }
+#DiaryPage #DiaryDateItemCount { color:#8a75aa; font-size:11px; }
+#DiaryPage #DiaryListFooter { color:#88779d; font-size:11px; padding-left:3px; }
+
+#DiaryPage #DiaryDetailDate {
+    color:#2c2041;
+    font-size:17px;
+    font-weight:800;
+}
+#DiaryPage #DiaryDetailMeta,
+#DiaryPage #DiaryPanelHint {
+    color:#85739d;
+    font-size:11px;
+}
+
+#DiaryPage #DiaryScroll,
+#DiaryPage #DiaryScroll QWidget,
+#DiaryPage #DiaryScroll QWidget#qt_scrollarea_viewport {
+    background:transparent;
+    border:none;
+}
+#DiaryPage #DiarySummaryNote {
+    background:rgba(238,227,255,0.62);
+    border:1px solid rgba(126,83,200,0.13);
+    border-radius:8px;
+}
+#DiaryPage #DiarySummaryText { color:#675679; font-size:10px; }
+#DiaryPage #DiaryTimelineMarker {
+    background:rgba(255,255,255,0.86);
+    border:1px solid rgba(127,83,210,0.23);
+    border-radius:14px;
+}
+#DiaryPage #DiaryEntryCard {
+    background:rgba(255,255,255,0.76);
+    border:1px solid rgba(121,82,186,0.11);
+    border-radius:9px;
+}
+#DiaryPage #DiaryEntryCard:hover {
+    background:rgba(255,255,255,0.76);
+    border-color:rgba(126,82,207,0.23);
+}
+#DiaryPage #DiaryEntryTitle {
+    color:#453354;
+    font-size:10px;
+    font-weight:700;
+}
+#DiaryPage #DiaryEntryTag {
+    color:#7650c2;
+    background:rgba(229,216,255,0.76);
+    border:1px solid rgba(130,84,207,0.09);
+    border-radius:7px;
+    padding:2px 8px;
+    font-size:8px;
+}
+#DiaryPage #DiaryEntryTag[tag="对话"] { color:#2e8f8b; background:rgba(214,243,240,0.82); }
+#DiaryPage #DiaryEntryTag[tag="偏好"] { color:#d04c89; background:rgba(255,218,237,0.74); }
+#DiaryPage #DiaryEntryTag[tag="知识"] { color:#436fc9; background:rgba(217,228,255,0.76); }
+#DiaryPage #DiaryEntryTag[tag="情绪"] { color:#cf4f79; background:rgba(255,221,233,0.74); }
+#DiaryPage #DiaryEntryTag[tag="重要"] { color:#d68b34; background:rgba(255,235,205,0.80); }
+#DiaryPage #DiaryEntryTag[tag="灵感"] { color:#bf7550; background:rgba(255,229,215,0.78); }
+#DiaryPage #DiaryEntryTag[tag="提醒"] { color:#d36f50; background:rgba(255,225,214,0.78); }
+#DiaryPage #DiaryEntryTag[tag="其他"] { color:#5979bc; background:rgba(222,230,252,0.76); }
+#DiaryPage #DiaryEmpty {
+    min-height:140px;
+    color:#8a779f;
+    font-size:13px;
+}
+
+/* 六花写的当天日记（随笔小作文） */
+#DiaryPage #DiaryStoryCard {
+    background:rgba(255,255,255,0.78);
+    border:1px solid rgba(126,83,205,0.16);
+    border-radius:12px;
+}
+#DiaryPage #DiaryStoryTitle {
+    color:#3a2457;
+    font-size:15px;
+    font-weight:800;
+}
+#DiaryPage #DiaryStoryMood {
+    color:#8a63c9;
+    font-size:12px;
+    background:rgba(236,225,255,0.70);
+    border:1px solid rgba(130,84,207,0.12);
+    border-radius:10px;
+    padding:3px 11px;
+}
+#DiaryPage #DiaryStoryText {
+    color:#4a3a60;
+    font-size:14px;
+}
+#DiaryPage #DiaryStoryEmpty {
+    min-height:140px;
+    color:#9a85b5;
+    font-size:13px;
+}
+
+/* Period summaries. */
+#DiaryPage #DiaryPanelTitle {
+    color:#3b2a50;
+    font-size:14px;
+    font-weight:750;
+}
+#DiaryPage #DiaryPeriodDetail {
+    background:rgba(255,255,255,0.45);
+    border:1px solid rgba(121,82,187,0.10);
+    border-radius:10px;
+}
+#DiaryPage #DiaryPeriodIcon {
+    background:rgba(235,224,255,0.72);
+    border:1px solid rgba(126,82,207,0.12);
+    border-radius:17px;
+}
+#DiaryPage #DiaryPeriodTitle {
+    color:#322044;
+    font-size:19px;
+    font-weight:800;
+}
+#DiaryPage #DiaryPeriodContent {
+    color:#5f506d;
+    font-size:13px;
+}
+#DiaryPage #DiaryHighlight {
+    color:#7951ba;
+    background:rgba(240,231,255,0.55);
+    border:1px solid rgba(124,82,195,0.10);
+    border-radius:8px;
+    padding:8px 10px;
+    font-size:12px;
+}
+
+/* Calendar, tags, and mood rail. */
+#DiaryPage #DiarySideTitle {
+    color:#39264f;
+    font-size:14px;
+    font-weight:800;
+}
+#DiaryPage #DiarySideHeading { background:transparent; border:none; }
+
+/* 日记统计卡 */
+#DiaryPage #DiaryStatBig {
+    color:#7c53d6;
+    font-size:19px;
+    font-weight:800;
+}
+#DiaryPage #DiaryStatCap {
+    color:#85709b;
+    font-size:10px;
+}
+
+/* 心情趋势卡 */
+#DiaryPage #DiaryMoodDot {
+    font-size:9px;
+}
+#DiaryPage #DiaryMoodDay {
+    color:#8a779f;
+    font-size:10px;
+}
+#DiaryPage #DiaryCalendar {
+    background:transparent;
+    border:none;
+}
+#DiaryPage #DiaryCalendarMonth {
+    color:#44325d;
+    font-size:12px;
+    font-weight:750;
+}
+#DiaryPage #DiaryCalendarNav {
+    color:#4a3861;
+    background:transparent;
+    border:none;
+    border-radius:8px;
+    font-size:13px;
+    font-weight:800;
+}
+#DiaryPage #DiaryCalendarNav:hover {
+    color:#7447cf;
+    background:rgba(232,219,255,0.76);
+}
+#DiaryPage #DiaryCalendarWeekday {
+    color:#817091;
+    font-size:10px;
+    font-weight:700;
+}
+#DiaryPage #DiaryCalendarDay {
+    min-width:28px;
+    padding:0;
+    color:#55436b;
+    background:transparent;
+    border:none;
+    border-radius:7px;
+    font-size:10px;
+}
+#DiaryPage #DiaryCalendarDay:hover {
+    color:#6941bb;
+    background:rgba(235,224,255,0.74);
+}
+#DiaryPage #DiaryCalendarDay:focus { border:1px solid rgba(110,64,199,0.46); }
+#DiaryPage #DiaryCalendarDay[outside="true"] { color:rgba(91,74,113,0.35); }
+#DiaryPage #DiaryCalendarDay[hasEntry="true"] {
+    color:#7144ce;
+    background:rgba(231,218,255,0.58);
+    font-weight:800;
+}
+#DiaryPage #DiaryCalendarDay[today="true"] {
+    border:1px solid rgba(127,80,211,0.38);
+}
+#DiaryPage #DiaryCalendarDay[selected="true"] {
+    color:#ffffff;
+    background:#8757df;
+    border:1px solid #7546ce;
+    font-weight:800;
+}
+
+#DiaryPage #DiaryMoodCharacter { background:transparent; border:none; }
+#DiaryPage #DiaryMoodCopy {
+    color:#5a486c;
+    font-size:12px;
+    font-weight:600;
+}
+#DiaryPage #DiaryMoodButton {
+    min-width:44px;
+    min-height:50px;
+    padding:2px 1px;
+    color:#756686;
+    background:rgba(255,255,255,0.43);
+    border:1px solid rgba(123,83,190,0.10);
+    border-radius:9px;
+    font-size:11px;
+}
+#DiaryPage #DiaryMoodButton:hover {
+    color:#7043c9;
+    background:rgba(239,228,255,0.80);
+}
+#DiaryPage #DiaryMoodButton:focus { border:1px solid rgba(110,64,199,0.58); }
+#DiaryPage #DiaryMoodButton:checked {
+    color:#7140ce;
+    background:rgba(224,207,255,0.92);
+    border:1px solid rgba(121,75,209,0.54);
+    font-weight:700;
+}
+
+/* Quiet scrollbars on all diary lists and scroll areas. */
+#DiaryPage QScrollBar:vertical {
+    width:7px;
+    margin:2px 0;
+    background:rgba(220,208,239,0.24);
+    border:none;
+    border-radius:3px;
+}
+#DiaryPage QScrollBar::handle:vertical {
+    min-height:28px;
+    background:rgba(133,88,219,0.52);
+    border-radius:3px;
+}
+#DiaryPage QScrollBar::handle:vertical:hover { background:rgba(122,75,211,0.70); }
+#DiaryPage QScrollBar::add-line:vertical,
+#DiaryPage QScrollBar::sub-line:vertical,
+#DiaryPage QScrollBar::add-page:vertical,
+#DiaryPage QScrollBar::sub-page:vertical {
+    height:0;
+    background:transparent;
+    border:none;
+}
