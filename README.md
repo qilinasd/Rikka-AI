@@ -21,6 +21,12 @@
 
 </div>
 
+<!-- 🦋 六花立绘 · 邪王真眼（置顶首图，放大居中） -->
+<p align="center">
+  <img src="docs/preview/rikka.png" alt="小鸟游六花 · 邪王真眼" width="80%"/>
+  <br/><sub>👆 小鸟游六花 · 寄宿着「邪王真眼」</sub>
+</p>
+
 <p align="center">
   <img src="docs/preview/main.png" alt="RikkaAI 主界面" width="100%"/>
   <br/><sub>👆 RikkaAI 主界面 · 聊天 + 六花立绘 + 情感状态面板</sub>
@@ -123,11 +129,6 @@ RikkaAI 是一个面向 **Windows 10/11** 的 Python 桌面 AI 伴侣，使用 *
 <p align="center">
   <img src="docs/preview/settings.png" alt="设置界面" width="100%"/>
   <br/><sub>👆 设置 · 预设方案 / 通道 / 行为规则</sub>
-</p>
-
-<p align="center">
-  <img src="docs/preview/rikka.png" alt="六花立绘" width="60%"/>
-  <br/><sub>👆 六花立绘 · 邪王真眼</sub>
 </p>
 
 ---
