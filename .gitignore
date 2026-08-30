@@ -12,6 +12,10 @@ Thumbs.db
 
 # API 配置（含 API Key）
 config.py
+.secret-backup/
+.secret-store/
+.env
+*.csv
 
 # 用户记忆 / 数据库
 memory_data/
@@ -44,6 +48,8 @@ tts/
 # 临时文件
 tmp/
 output/
+.argo-test-*/
+.argo-state-*/
 
 # Graphify 输出
 graphify-out/
@@ -81,3 +87,9 @@ installed_skills.json
 
 # MCP 配置（含 API Key）
 .mcp.json
+# privacy: do NOT publish persona / surf records / downloaded images
+RikkaAI/persona/
+RikkaAI/surf_records/
+RikkaAI/images/downloaded/
+RikkaAI/images/generated/
+RikkaAI/.codegraph/
