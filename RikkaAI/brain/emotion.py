@@ -2,7 +2,12 @@
 RikkaAI - 情感状态系统
 追踪对话情绪，动态影响回复风格
 """
-import re
+
+# 可锁定的字段：锁定的数值不会被日常互动自动更新（设置弹窗仍可手动改）
+LOCKABLE_KEYS = ("mood", "emotion_energy", "affection",
+                 "social", "mastery", "novelty", "rest", "loneliness")
+EMOTION_LOCK_KEYS = ("mood", "emotion_energy", "affection")
+NEEDS_LOCK_KEYS = ("social", "mastery", "novelty", "rest", "loneliness")
 
 
 class EmotionState:
@@ -26,10 +31,12 @@ class EmotionState:
         self.energy = 50            # 精力值 0-100
         self.affection = 30         # 好感度 0-100
         self._last_mood = "neutral"
+        self.locked = set()         # 被锁定的字段（mood/emotion_energy/affection）
 
     def analyze(self, text: str):
-        """分析用户输入，更新情感状态"""
+        """分析用户输入，更新情感状态（锁定字段跳过对应更新）"""
         text_lower = text.lower()
+        locked = getattr(self, "locked", set())
 
         # 计算情感分数
         score = 0
@@ -41,31 +48,54 @@ class EmotionState:
                 score -= 1.5
 
         # 更新好感度（缓慢变化）
-        if score > 0:
-            self.affection = min(100, self.affection + score * 2)
-        elif score < 0:
-            self.affection = max(0, self.affection + score * 3)
+        if "affection" not in locked:
+            if score > 0:
+                self.affection = min(100, self.affection + score * 2)
+            elif score < 0:
+                self.affection = max(0, self.affection + score * 3)
+
+        # 更新精力
+        if "emotion_energy" not in locked:
+            if score >= 2:
+                self.energy = min(100, self.energy + 5)
+            elif score <= -2:
+                self.energy = max(0, self.energy - 10)
+            elif score > 0:
+                self.energy = min(100, self.energy + 2)
+            elif score < 0:
+                self.energy = max(0, self.energy - 5)
+            else:
+                self.energy = min(100, self.energy + 1)
 
         # 更新情绪
+        if "mood" in locked:
+            return
         if score >= 2:
             self.mood = "happy"
-            self.energy = min(100, self.energy + 5)
         elif score <= -2:
             self.mood = "sad" if score > -4 else "angry"
-            self.energy = max(0, self.energy - 10)
         elif score > 0:
             if self.mood == "neutral":
                 self.mood = "happy"
-            self.energy = min(100, self.energy + 2)
         elif score < 0:
             self.mood = "sad"
-            self.energy = max(0, self.energy - 5)
         else:
             # 中性消息，缓慢恢复
             if self.mood != "neutral":
                 self._last_mood = self.mood
             self.mood = "neutral"
-            self.energy = min(100, self.energy + 1)
+
+    def apply_llm_mood(self, mood=None, energy_delta=0, affection_delta=0):
+        """LLM 情绪判定的落账入口（brain/emotion_llm.py 调用）。
+
+        尊重锁定字段；delta 夹在安全范围内，防止单轮情绪被拉爆。"""
+        locked = getattr(self, "locked", set())
+        if mood in ("happy", "neutral", "sad", "angry") and "mood" not in locked:
+            self.mood = mood
+        if "emotion_energy" not in locked:
+            self.energy = max(0, min(100, self.energy + max(-15, min(15, int(energy_delta or 0)))))
+        if "affection" not in locked:
+            self.affection = max(0, min(100, self.affection + max(-10, min(10, int(affection_delta or 0)))))
 
     def get_prompt_suffix(self) -> str:
         """生成情感状态文本，注入到 system prompt"""
@@ -98,3 +128,43 @@ class EmotionState:
             f"\n【当前情感】{emoji} 你{desc}，好感度{self.affection}%，精力{self.energy}%\n"
             f"【风格提示】{style_notes}"
         )
+
+    def snapshot(self, needs=None, planner_enabled=False) -> dict:
+        """Return a UI-safe read-only snapshot of the current emotional state."""
+        mood_meta = {
+            "happy": ("开心", "😊", "今天的心情亮晶晶的，想和契约者分享好消息。"),
+            "neutral": ("平静", "😐", "情绪平稳，安静地陪在契约者身边。"),
+            "sad": ("低落", "😢", "有一点低落，但仍然愿意温柔地陪伴。"),
+            "angry": ("生气", "😠", "情绪有些起伏，正在努力保持耐心。"),
+        }
+        label, emoji, note = mood_meta.get(self.mood, mood_meta["neutral"])
+        data = {
+            "mood": self.mood,
+            "mood_label": label,
+            "mood_emoji": emoji,
+            "mood_note": note,
+            "emotion_energy": int(max(0, min(100, self.energy))),
+            "affection": int(max(0, min(100, self.affection))),
+            "needs_enabled": bool(needs is not None),
+            "needs": {},
+            "initiative_drive": None,
+            "proactive_success_probability": None,
+        }
+        if needs is not None:
+            data["needs"] = {
+                key: int(max(0, min(100, getattr(needs, key, 0))))
+                for key in ("social", "mastery", "novelty", "rest", "energy", "loneliness")
+            }
+            try:
+                data["initiative_drive"] = round(float(needs.initiative_drive()), 3)
+            except Exception:
+                data["initiative_drive"] = None
+            if planner_enabled:
+                try:
+                    from brain.planner import decide_proactive
+                    data["proactive_success_probability"] = round(
+                        float(decide_proactive(needs, last_proactive_min=None)["p_success"]), 3
+                    )
+                except Exception:
+                    data["proactive_success_probability"] = None
+        return data

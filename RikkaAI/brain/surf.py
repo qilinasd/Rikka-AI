@@ -310,6 +310,11 @@ class SurfStore:
                 self._save()
                 return
 
+    def unseen(self, urls):
+        """过滤掉已经出现过的 url（主动冲浪的新鲜感去重）。"""
+        seen = set(self._data.get("seen", []))
+        return [u for u in (str(x or "").strip() for x in urls) if u and u not in seen]
+
 
 _store = None
 
@@ -445,38 +450,64 @@ def search_bilibili(keyword: str, limit: int = 5) -> list:
     return videos
 
 
-def save_record(source: str, tag: str, title: str, url: str = "", detail: str = "", results=None):
-    """保存冲浪记录：写入结构化 JSON（兼容旧 md 文件，供人工查看）。"""
-    # 结构化记录（UI / 统计用）
-    rec_id = get_store().add(source, tag, title, url, detail, results)
-    # 兼容旧格式：md 文件（人工查看）
+def search_popular(limit: int = 3) -> list:
+    """抓B站当前热门视频（官方 popular 接口，无需登录）。
+
+    用途：兴趣标签为空/全在冷却时，主动冲浪的兜底话题源——
+    六花没标签也能"逛热门"，而不是空手而归。
+    返回结构与 search_bilibili 一致：{bvid, title, url, author, play, description}。"""
+    limit = int(limit) if limit else 3
+    headers = {
+        "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                       "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"),
+        "Referer": "https://www.bilibili.com/",
+    }
     try:
-        now = datetime.now()
-        time_str = now.strftime("%Y-%m-%d %H:%M")
-        filename = now.strftime("%Y%m%d_%H%M%S") + f"_{source}_{rec_id[-6:]}.md"
-        os.makedirs(config.SURF_DIR, exist_ok=True)
-        content = (
-            f"# 六花冲浪记录\n\n"
-            f"**时间**: {time_str}\n"
-            f"**来源**: {source}\n"
-            f"**标签**: {tag}\n"
-            f"**标题**: {title}\n"
-            f"**链接**: {url}\n\n"
-            f"{detail}\n"
+        import requests
+        resp = requests.get(
+            "https://api.bilibili.com/x/web-interface/popular",
+            params={"ps": min(20, max(1, limit * 4))},
+            headers=headers, timeout=15,
         )
-        if results:
-            content += "\n---\n**结果**:\n" + "\n".join(
-                f"- {x.get('title', '')}  {x.get('url', '')}" for x in results[:10]
-            ) + "\n"
-        with open(os.path.join(config.SURF_DIR, filename), "w", encoding="utf-8") as f:
-            f.write(content)
+        if resp.ok:
+            data = resp.json()
+            if data.get("code") == 0:
+                videos = []
+                seen = set()
+                for item in (data.get("data", {}).get("list") or []):
+                    bv = str(item.get("bvid") or "")
+                    if not bv or bv in seen:
+                        continue
+                    seen.add(bv)
+                    owner = item.get("owner") or {}
+                    stat = item.get("stat") or {}
+                    desc = _clean_html(item.get("desc") or "")
+                    videos.append({
+                        "bvid": bv,
+                        "title": _clean_html(item.get("title")) or "B站热门视频",
+                        "url": f"https://www.bilibili.com/video/{bv}",
+                        "author": str(owner.get("name") or ""),
+                        "play": _format_play(stat.get("view")),
+                        "description": desc[:200],
+                    })
+                    if len(videos) >= limit:
+                        break
+                return videos
     except Exception:
         pass
+    return []
+
+
+def save_record(source: str, tag: str, title: str, url: str = "", detail: str = "", results=None):
+    """保存冲浪记录：只写结构化 JSON（UI / 统计用）。
+    纯 JSON 已是主数据源，不再双写旧 md 文件（已清理历史 md）。"""
+    # 结构化记录（UI / 统计用）
+    rec_id = get_store().add(source, tag, title, url, detail, results)
     return rec_id
 
 
 def get_records(limit: int = 50, source: str = "", query: str = "", favorite_only: bool = False):
-    """读取冲浪记录；仅在结构化历史缺失或不可用时读取旧 md 文件。"""
+    """读取冲浪记录（仅结构化 JSON）。"""
     try:
         store = get_store()
         rows = store.records(limit=limit, source=source or None, query=query or None,
@@ -485,35 +516,8 @@ def get_records(limit: int = 50, source: str = "", query: str = "", favorite_onl
             return rows
     except Exception:
         pass
-    # 旧 md 兜底
-    try:
-        os.makedirs(config.SURF_DIR, exist_ok=True)
-        files = sorted(os.listdir(config.SURF_DIR), reverse=True)[:limit]
-        records = []
-        for fname in files:
-            if fname.endswith(".md") and not fname.startswith("."):
-                filepath = os.path.join(config.SURF_DIR, fname)
-                try:
-                    with open(filepath, "r", encoding="utf-8") as f:
-                        content = f.read()
-                    title = source_v = tag = ""
-                    for line in content.split("\n"):
-                        if line.startswith("**标题**"):
-                            title = line.replace("**标题**: ", "")
-                        elif line.startswith("**来源**"):
-                            source_v = line.replace("**来源**: ", "")
-                        elif line.startswith("**标签**"):
-                            tag = line.replace("**标签**: ", "")
-                    records.append({
-                        "source": source_v, "tag": tag, "title": title,
-                        "url": "", "detail": "", "results": [], "time": "",
-                        "id": fname,
-                    })
-                except Exception:
-                    pass
-        return records
-    except Exception:
-        return []
+    # 结构化 JSON 是唯一数据源，不再读取旧 md 文件（已清理历史 md）
+    return []
 
 
 def get_surf_stats() -> dict:

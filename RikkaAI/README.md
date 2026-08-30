@@ -76,6 +76,12 @@ python main.py
 
 > 💡 **提示**：你可以在设置中配置多组 API 预设方案，快速切换。
 
+API Key 不应写入源码、JSON 或提交到 Git。Windows 桌面端会优先保存到当前用户的
+Windows Credential Manager；CI/服务器可使用 `RIKKAAI_API_KEY` 等环境变量。配置文件只保存模型、地址和 `secret_ref`。
+
+默认测试不会调用真实 API。需要进行受控联调时，显式设置 `RIKKAAI_E2E=1` 后运行
+`python tests/run_e2e.py`；脚本不会输出 Key、完整回复或写入真实对话数据库。
+
 ---
 
 ## 📁 项目结构
@@ -301,7 +307,7 @@ RikkaAI/
 | 记忆存储 | SQLite + 文件系统 |
 | 全文检索 | SQLite LIKE + 关键词分词 |
 | 知识图谱 | SQLite 自定义节点-边模型 |
-| 图片分析 | GLM-4V-Flash（智谱 API） |
+| 图片分析 | 用户在方案设置中配置的兼容视觉模型 |
 | 网络搜索 | DuckDuckGo / Google |
 | 主题 | 自定义 QSS 暗色哥特风 |
 

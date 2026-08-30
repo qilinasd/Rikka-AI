@@ -10,6 +10,8 @@ import os, sqlite3, json, re, math
 from datetime import datetime, timedelta
 import config
 
+_ARCHIVIST_TRIGGER_EVERY = 50
+
 
 def _get_db():
     db_path = os.path.join(config.USER_CONFIG_DIR, "rikkai.db")
@@ -149,6 +151,13 @@ def _init():
             entities TEXT NOT NULL DEFAULT '[]',
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
+        )
+    """)
+    # Archivist 触发计数：记录自上次触发后新增的碎片数，避免 active 数量达到阈值后每条都重复触发。
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS mv_meta (
+            key TEXT PRIMARY KEY,
+            value INTEGER NOT NULL DEFAULT 0
         )
     """)
     conn.commit()
@@ -354,24 +363,43 @@ def _link_entity_to_memory(conn, entity_name: str, entity_type: str, memory_id: 
 
 
 def _maybe_trigger_consolidation(conn):
-    """每 50 条 active 碎片触发一次 Archivist 整合"""
+    """每新增 50 条碎片触发一次 Archivist 整合。"""
     try:
+        row = conn.execute(
+            "SELECT value FROM mv_meta WHERE key = 'archivist_pending_fragments'"
+        ).fetchone()
+        pending = int(row[0]) if row else 0
+        pending += 1
+        if pending < _ARCHIVIST_TRIGGER_EVERY:
+            conn.execute(
+                "INSERT INTO mv_meta(key, value) VALUES('archivist_pending_fragments', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (pending,),
+            )
+            conn.commit()
+            return
+
+        # 先清零再启动后台任务，确保任务执行期间继续新增的碎片计入下一轮。
+        conn.execute(
+            "INSERT INTO mv_meta(key, value) VALUES('archivist_pending_fragments', 0) "
+            "ON CONFLICT(key) DO UPDATE SET value = 0"
+        )
         count = conn.execute(
             "SELECT COUNT(*) FROM mf_fragments WHERE status='active'"
         ).fetchone()[0]
+        conn.commit()
 
-        if count >= 50:
-            print(f"[MemoryVault] 触发 Archivist 整合（{count} 条活跃碎片）", flush=True)
-            try:
-                from brain import archivist
-                # 在后台线程运行，避免阻塞当前保存
-                import threading
-                threading.Thread(
-                    target=archivist.consolidate_fragments,
-                    daemon=True
-                ).start()
-            except Exception as e:
-                print(f"[MemoryVault] Archivist 整合失败: {e}", flush=True)
+        print(f"[MemoryVault] 触发 Archivist 整合（新增 {_ARCHIVIST_TRIGGER_EVERY} 条，当前 {count} 条活跃碎片）", flush=True)
+        try:
+            from brain import archivist
+            # 在后台线程运行，避免阻塞当前保存
+            import threading
+            threading.Thread(
+                target=archivist.light_tick,
+                daemon=True
+            ).start()
+        except Exception as e:
+            print(f"[MemoryVault] Archivist 整合失败: {e}", flush=True)
     except Exception:
         pass  # 静默失败，不影响主流程
 
@@ -622,27 +650,66 @@ _STM_TIME_WEIGHT = 0.7  # 短期：新鲜度权重
 _LTM_EMOTION_WEIGHT = 0.7  # 长期：情绪权重
 
 
-def _get_decay_lambda(emotional_weight: float) -> float:
-    """情绪权重决定衰减速度"""
-    if emotional_weight >= 0.8:
-        return 0.005  # 重要记忆，半衰期~140天
-    elif emotional_weight >= 0.6:
-        return 0.01  # 标准，~70天
-    elif emotional_weight >= 0.4:
-        return 0.02  # 轻度，~35天
-    return 0.04  # 琐碎，~17天
-
-
-def _calc_relevance_score(days: float, emotional_weight: float) -> float:
-    """计算综合相关度分数（时间衰减 + 情绪权重）"""
+def _get_decay_lambda(emotional_weight: float, mention_count: int = 1) -> float:
+    """情绪权重决定衰减速度；mention_count 越高（被反复提到），衰减越慢。
+    白守「拥抱冗余」理念：写过很多次的记忆 = 羁绊的厚度，不该轻易被时间冲淡。"""
+    # 提及次数加成：每 20 次提及让衰老减速一档（封顶 5 档）
+    mention_bonus = min(5, int(mention_count) // 20)
     ew = min(max(emotional_weight, 0), 1)
-    lam = _get_decay_lambda(ew)
+    if ew >= 0.8:
+        lam = 0.005
+    elif ew >= 0.6:
+        lam = 0.01
+    elif ew >= 0.4:
+        lam = 0.02
+    else:
+        lam = 0.04
+    # 提及次数让半衰期拉长（重复的羁绊更牢固）
+    lam = max(0.002, lam * (0.85 ** mention_bonus))
+    return lam
+
+
+def _calc_relevance_score(days: float, emotional_weight: float, mention_count: int = 1) -> float:
+    """计算综合相关度分数（时间衰减 + 情绪权重 + 提及次数冗余奖励）"""
+    ew = min(max(emotional_weight, 0), 1)
+    lam = _get_decay_lambda(ew, mention_count)
     time_decay = math.exp(-lam * days)
     emotion_retention = 0.3 + ew * 0.7
+    # 冗余奖励：被反复提到的记忆额外加一点权重（白守：重复=羁绊厚度）
+    redundancy_bonus = min(0.10, 0.003 * int(mention_count))
 
     if days <= _SEGMENT_DAYS:
-        return _STM_TIME_WEIGHT * time_decay + (1 - _STM_TIME_WEIGHT) * emotion_retention
-    return (1 - _LTM_EMOTION_WEIGHT) * time_decay + _LTM_EMOTION_WEIGHT * emotion_retention
+        return _STM_TIME_WEIGHT * time_decay + (1 - _STM_TIME_WEIGHT) * emotion_retention + redundancy_bonus
+    return (1 - _LTM_EMOTION_WEIGHT) * time_decay + _LTM_EMOTION_WEIGHT * emotion_retention + redundancy_bonus
+
+
+# 实体提及次数缓存（每轮搜索内复用，避免逐碎片查库）
+_mentions_cache = {}
+
+
+def _mention_count_for(entity, conn=None):
+    """取实体提及次数（白守「拥抱冗余」：被反复提到的记忆更牢固）。无实体时返回 1。"""
+    if not entity:
+        return 1
+    key = str(entity)
+    if key in _mentions_cache:
+        return _mentions_cache[key]
+    try:
+        close = conn is None
+        if close:
+            conn = _get_db()
+        row = conn.execute("SELECT mention_count FROM mf_entities WHERE name = ?", (key,)).fetchone()
+        val = int(row["mention_count"]) if row and row["mention_count"] else 1
+        _mentions_cache[key] = val
+        if close:
+            conn.close()
+        return val
+    except Exception:
+        return 1
+
+
+def _clear_mentions_cache():
+    _mentions_cache.clear()
 
 
 def rebuild_fts():
@@ -720,6 +787,7 @@ def search(query: str, top_k: int = 8) -> list:
     if not query or not query.strip():
         return _get_recent_with_decay(top_k)
 
+    _clear_mentions_cache()
     conn = _get_db()
     try:
         words = [w.strip() for w in query.split() if w.strip()]
@@ -802,7 +870,7 @@ def search(query: str, top_k: int = 8) -> list:
                 created = _parse_created(item.get("created_at"))
                 days = (now - created).days
                 ew = item["emotional_weight"] or 0.5
-                decay_score = _calc_relevance_score(days, ew)
+                decay_score = _calc_relevance_score(days, ew, _mention_count_for(item.get("entity"), conn))
                 all_scored[fid] = {"item": item, "rrf_score": 0, "decay": decay_score}
             all_scored[fid]["rrf_score"] += score
 
@@ -815,7 +883,7 @@ def search(query: str, top_k: int = 8) -> list:
                 created = _parse_created(item.get("created_at"))
                 days = (now - created).days
                 ew = item["emotional_weight"] or 0.5
-                decay_score = _calc_relevance_score(days, ew)
+                decay_score = _calc_relevance_score(days, ew, _mention_count_for(item.get("entity"), conn))
                 all_scored[fid] = {"item": item, "rrf_score": 0, "decay": decay_score}
             all_scored[fid]["rrf_score"] += score
 
@@ -828,7 +896,7 @@ def search(query: str, top_k: int = 8) -> list:
                 created = _parse_created(item.get("created_at"))
                 days = (now - created).days
                 ew = item["emotional_weight"] or 0.5
-                decay_score = _calc_relevance_score(days, ew)
+                decay_score = _calc_relevance_score(days, ew, _mention_count_for(item.get("entity"), conn))
                 all_scored[fid] = {"item": item, "rrf_score": 0, "decay": decay_score}
             all_scored[fid]["rrf_score"] += score
 
@@ -873,7 +941,7 @@ def _get_recent_with_decay(limit: int = 8, conn=None):
                 created = now
             days = (now - created).days
             ew = r["emotional_weight"] or 0.5
-            score = _calc_relevance_score(days, ew)
+            score = _calc_relevance_score(days, ew, _mention_count_for(r["entity"], conn))
             scored.append((score, dict(r)))
         scored.sort(key=lambda x: -x[0])
         return [item for _, item in scored[:limit]]

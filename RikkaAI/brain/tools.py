@@ -1,15 +1,27 @@
 """
 RikkaAI - Function Calling 工具集
 """
-import os, glob, subprocess, platform, re, base64, sys
+import os, glob, subprocess, platform, re, base64, sys, time
 from datetime import datetime
 import config
+import secret_store
+
+# ⚠️ 默认不走任何系统/环境代理（避免误走 VPN/代理导致请求失败）。
+# 需要代理的（如 Twitter CLI）在其子进程 env 里单独设置，不影响这里的通用请求。
+import requests as _requests
+_HTTP = _requests.Session()
+try:
+    _HTTP.trust_env = False  # 屏蔽 HTTP_PROXY / HTTPS_PROXY / NO_PROXY 等环境代理
+except Exception:
+    pass
+def _http_get(url, **kwargs):
+    kwargs.setdefault("timeout", 12)
+    return _HTTP.get(url, **kwargs)
 
 def _norm_cat(c): return re.sub(r'([\U0001F000-\U0001FFFF☀-➿⭐❤]) ', r'\1', c)
-ZHIPU_KEY = "2df6241945714db08632ac658d8e893d.JtpBi8ABWxcwLu4O"
 
 def _image_mime(path):
-    """按文件头判断真实图片格式（后缀经常和真实格式不一致，GLM 靠 data URI 的 mime 判断）"""
+    """按文件头判断真实图片格式，供视觉模型的 data URI 使用。"""
     with open(path, "rb") as f:
         head = f.read(16)
     if head[:3] == b"\xff\xd8\xff": return "jpeg"
@@ -21,7 +33,7 @@ def _image_mime(path):
     return ext if ext in ("png", "jpeg", "jpg", "gif", "webp", "bmp") else "png"
 
 def _encode_image(path, max_side=2048, max_bytes=5_000_000):
-    """读出图片字节，返回 (base64, mime)。过大时先用 PIL 压缩，避免 GLM 拒绝/超时。"""
+    """读出图片字节，返回 (base64, mime)，过大时先用 PIL 压缩。"""
     if os.path.getsize(path) <= max_bytes:
         with open(path, "rb") as f:
             return base64.b64encode(f.read()).decode(), _image_mime(path)
@@ -44,41 +56,44 @@ def _encode_image(path, max_side=2048, max_bytes=5_000_000):
         with open(path, "rb") as f:
             return base64.b64encode(f.read()).decode(), _image_mime(path)
 
-def _vision_fallback(prompt, path):
-    """GLM-4V 失败时的兜底：vision.js（千问 VL，key 内置脚本）"""
-    import subprocess, shutil
-    node = shutil.which("node")
-    vision_js = r"f:\RikkaAI\claude-vision-skill\vision.js"
-    if not node or not os.path.exists(vision_js):
-        raise RuntimeError("vision.js 不可用")
-    r = subprocess.run([node, vision_js, path, prompt], capture_output=True,
-                       text=True, encoding="utf-8", errors="replace", timeout=90)
-    out = (r.stdout or "").strip()
-    if not out:
-        raise RuntimeError((r.stderr or "无输出")[:200])
-    return out
-
 def _vision(prompt, path, temp=0.3, maxt=1024):
     if not os.path.exists(path): return "文件不存在"
     b64, mime = _encode_image(path)
     import requests
-    err = ""
+    vision_key = config.VISION_API_KEY or secret_store.get("vision_api_key")
+    vision_model = config.VISION_MODEL
+    vision_base = config.VISION_API_BASE
+    if not all((vision_key, vision_model, vision_base)):
+        return "识图失败：未启用识图模型方案，请在「设置 → 方案设置」中配置并启用。"
     try:
-        r = requests.post("https://open.bigmodel.cn/api/paas/v4/chat/completions",
-            headers={"Authorization":f"Bearer {ZHIPU_KEY}","Content-Type":"application/json"},
-            json={"model":"glm-4v-flash","messages":[{"role":"user","content":[
+        r = requests.post(vision_base,
+            headers={"Authorization":f"Bearer {vision_key}","Content-Type":"application/json"},
+            json={"model":vision_model,"messages":[{"role":"user","content":[
                 {"type":"text","text":prompt},{"type":"image_url","image_url":{"url":f"data:image/{mime};base64,{b64}"}}
             ]}],"temperature":temp,"max_tokens":maxt},timeout=60)
         if r.status_code == 200:
             return r.json()["choices"][0]["message"]["content"]
-        err = f"GLM HTTP {r.status_code}: {r.text[:150]}"
+        return f"识图失败：视觉模型 HTTP {r.status_code}: {r.text[:150]}"
     except Exception as e:
-        err = f"GLM 异常: {str(e)[:150]}"
-    # 兜底：千问 VL（vision.js）
-    try:
-        return _vision_fallback(prompt, path)
-    except Exception as e2:
-        return f"识图失败（GLM: {err}；千问兜底也失败: {e2}）"
+        return f"识图失败：视觉模型异常: {str(e)[:150]}"
+
+# ═══ 工具信任声明制（借鉴 NoneBot/Koishi 的权限模型）═══════════════
+# 访客（未授权 QQ 用户）仅可使用显式列入 GUEST_TOOLS 的公开只读工具；
+# 未声明的工具一律视为契约者专属——新工具默认对访客不可见，杜绝黑名单漏新。
+# 原则：本机/私人数据/记忆/定时/联系方式类能力永不对访客开放。
+GUEST_TOOLS = frozenset({
+    "get_current_time", "get_weather",
+    "web_search", "argo_search", "bilibili_search",
+    "search_wiki", "search_news", "read_rss", "read_twitter",
+    "youtube_transcript", "github_repo", "read_url",
+    "describe_image",   # 访客发图想让她看 → 只描述该图，无本机访问
+})
+
+
+def is_guest_allowed(tool_name) -> bool:
+    """该工具是否对访客（未授权 QQ 用户）开放。"""
+    return tool_name in GUEST_TOOLS
+
 
 TOOL_DEFINITIONS = [
     {"type":"function","function":{"name":"read_file","description":"读取指定文件的内容","parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}}},
@@ -120,15 +135,13 @@ TOOL_DEFINITIONS = [
     {"type":"function","function":{"name":"read_twitter","description":"【Twitter/X 专用】读取 Twitter/X 的内容（需要契约者在 Chrome 里登录了 X，且 OpenCLI 扩展已连接）。契约者提到 Twitter/X/推特、要看某人的推文或热搜时用本工具，不要用 web_search。可以看首页时间线、某个用户的资料或最近推文、搜推文、读单条推文或长文、看热门趋势。只读操作，不能发帖/点赞/关注。如果契约者没登录 X 就提示他先登录。","parameters":{"type":"object","properties":{"action":{"type":"string","enum":["timeline","profile","tweets","search","tweet","article","trending"],"description":"timeline=首页时间线；profile=用户资料（target填用户名）；tweets=用户最近推文（target填用户名）；search=搜推文（target填关键词）；tweet=读单条推文（target填推文URL或ID）；article=读长文（target填推文URL或ID）；trending=热门趋势（不需要target）"},"target":{"type":"string","description":"action 需要的参数：profile/tweets 填用户名（如 elonmusk），search 填关键词，tweet/article 填推文URL或ID，timeline/trending 留空"},"limit":{"type":"number","description":"返回条数，默认10，最多20"}},"required":["action"]}}},
     # ═══════════════════════════════════════════════════════════════
     # ── QQ 消息发送 ─────────────────────────────────────────
-    {"type":"function","function":{"name":"send_qq_message","description":"给契约者的 QQ 发送一条消息。当你想主动告诉契约者什么、或者契约者在 QQ 上找你但你想直接在这里回复时使用。发之前想一想：「这话值不值得发到 QQ 上？」","parameters":{"type":"object","properties":{"message":{"type":"string","description":"要发送的 QQ 消息内容"},"user_id":{"type":"number","description":"可选的 QQ 号，不填则发给契约者自己"}},"required":["message"]}}},
+    {"type":"function","function":{"name":"send_qq_message","description":"给契约者的 QQ 发送一条消息。当你想主动告诉契约者什么、或者契约者在 QQ 上找你但你想直接在这里回复时使用。必须把要发送的完整文字放进 message 字段，message 不能为空；不能只调用工具名或在普通回复里写待发送内容。发之前想一想：「这话值不值得发到 QQ 上？」","parameters":{"type":"object","properties":{"message":{"type":"string","description":"要发送的 QQ 消息内容，必须为非空字符串"},"user_id":{"type":"number","description":"可选的 QQ 号，不填则发给契约者自己"}},"required":["message"]}}},
     {"type":"function","function":{"name":"send_qq_image","description":"给契约者的 QQ 发送一张图片。先截图或下载图片拿到图片路径，再发给契约者。比如：「把我桌面截图发到QQ上」「把这张猫猫图片发给契约者」","parameters":{"type":"object","properties":{"image_path":{"type":"string","description":"图片文件的完整路径"},"caption":{"type":"string","description":"可选，配图文字说明"},"user_id":{"type":"number","description":"可选的 QQ 号，不填则发给契约者"}},"required":["image_path"]}}},
     {"type":"function","function":{"name":"query_qq_contacts","description":"查询六花的 QQ 联系人列表：好友或群。当契约者问「你QQ上有谁」「把XX的联系方式找出来」「你在哪些群里」，或你想找到某个 QQ 号发消息时调用。","parameters":{"type":"object","properties":{"scope":{"type":"string","enum":["friends","groups","all"],"description":"friends=好友列表, groups=群列表, all=两者都要"},"keyword":{"type":"string","description":"可选，按昵称/备注/群名模糊筛选"}},"required":["scope"]}}},
     # ── 图片生成 ────────────────────────────────────────────
     # ── 记忆总结 ────────────────────────────────────────────
     {"type":"function","function":{"name":"build_summary","description":"生成记忆总结报告！写日报/周记/月报/年鉴。当契约者说「写日报」「写周记」「总结一下这周」「写月报」「写年鉴」时调用。会读取日记和记忆自动生成，保存到 summaries/ 目录下的对应文件夹。","parameters":{"type":"object","properties":{"level":{"type":"string","description":"总结级别：weekly=周记, monthly=月报, yearly=年鉴"},"period_key":{"type":"string","description":"可选，时间段标识，如 2026-W29（周）、2026-07（月）、2026（年），不填自动当前时段"}},"required":["level"]}}},
-    {"type":"function","function":{"name":"generate_image","description":"AI 画图！生成图片保存到 images/generated/ 目录，自动显示在聊天窗口+自动发QQ。契约者说画几张就设 n=几（严格按要求的数量，默认1，最多4）","parameters":{"type":"object","properties":{"prompt":{"type":"string","description":"图片描述，越详细越好！比如：一只坐在月亮上的黑猫，星空背景，动漫风格"},"model":{"type":"string","description":"可选，模型名称，默认 agnes-image-2.1-flash"},"n":{"type":"number","description":"契约者要求的图片数量（严格按此值，默认1，最多4）"}},"required":["prompt"]}}},
-    # ── 语音 ────────────────────────────────────────────────
-    {"type":"function","function":{"name":"speak","description":"用六花的语音开口说话！当你觉得这句话值得用声音说出口（卖萌、回应契约者、重要的话）或者契约者让你「用语音说」「说句话」「出个声」时调用。要点：文字必须简短口语化（几句话内），不要包含表情符号、不要有 markdown 和换行；不要每条回复都调用，只在值得开口的时候说。可以用 emotion 表达这句话的情绪，会直接改变六花的声音语气。","parameters":{"type":"object","properties":{"text":{"type":"string","description":"要用语音说的话，简短口语化，几秒钟能念完。日语模式下写日语口语。"},"to":{"type":"string","enum":["local","qq","both"],"description":"说给谁听：local=只在电脑上播放；qq=发给QQ上的契约者；both=两边都要。默认local。若契约者正在QQ上聊天或要求发到QQ，用qq或both。"},"emotion":{"type":"string","enum":["neutral","happy","sad"],"description":"说话情绪：happy=高兴活泼,sad=消沉低落,neutral=默认。会直接改变六花的声音语气，按这句话的情绪选。"},"translation":{"type":"string","description":"中文翻译。六花用日语说话时必填（语音条上给契约者看的中文对照）；中文模式不需要。"}},"required":["text"]}}},
+    {"type":"function","function":{"name":"generate_image","description":"AI 画图！使用设置中启用的生图模型方案，生成图片保存到 images/generated/ 目录，自动显示在聊天窗口+自动发QQ。契约者说画几张就设 n=几（严格按要求的数量，默认1，最多4）","parameters":{"type":"object","properties":{"prompt":{"type":"string","description":"图片描述，越详细越好！比如：一只坐在月亮上的黑猫，星空背景，动漫风格"},"model":{"type":"string","description":"可选，临时覆盖当前生图方案的模型名称"},"n":{"type":"number","description":"契约者要求的图片数量（严格按此值，默认1，最多4）"}},"required":["prompt"]}}},
 
     #  主动性工具（链式主动 + 临时回访 + 备忘录 + 人设成长）
     # ═══════════════════════════════════════════════════════════════
@@ -165,19 +178,57 @@ def _needs_ask(name: str) -> bool:
     return name in ASK_TOOLS and _ASK_HANDLER is not None
 
 
-def handle_tool_call(name, args, memory=None):
-    h=_HANDLERS.get(name)
-    if not h: return f"未知工具: {name}"
-    # ask 询问档：敏感工具先问用户
+# ═══════════════════════════════════════════════════════════
+#  四态 outcome（对齐 CyreneHarness）：
+#  success / failure / unknown / not_executed
+#  非幂等工具（发消息/写文件/改远端等）：结果可能"未知"，需副作用记账防重放
+# ═══════════════════════════════════════════════════════════
+
+# 非幂等工具：副作用不可安全重复执行（结果未知时暂停后续同类重放）
+NON_IDEMPOTENT_TOOLS = {
+    "send_qq_message", "send_qq_image",   # 发消息，中断后可能已发出
+    "write_file", "edit_file",            # 改文件，中断后可能已改一半
+    "browser_task",                       # 浏览器操作，副作用不可控
+    "download_image",                     # 下载，可能已开始
+    "open_app",                           # 打开程序
+}
+
+
+def handle_tool_call(name, args, memory=None, trusted=True):
+    """执行工具，返回四态 outcome 字典。
+
+    返回: {"status": "success|failure|unknown|not_executed", "content": ...,
+           "tool": name, "non_idempotent": bool}
+    兼容：内部仍把文本放到 content 里，调用方可直接取 content 展示。
+
+    trusted=False（访客会话）时执行护栏：非 GUEST_TOOLS 白名单内的工具
+    一律硬拒（not_executed），不经模型协商、不触发询问弹窗。
+    访问级别由消息入口的通道身份（QQ user_id）决定，对话内容无法改变。
+    """
+    if not trusted and name not in GUEST_TOOLS:
+        return {"status": "not_executed", "content": "该操作未对当前对话开放。", "tool": name, "non_idempotent": name in NON_IDEMPOTENT_TOOLS}
+    h = _HANDLERS.get(name)
+    non_idem = name in NON_IDEMPOTENT_TOOLS
+    if not h:
+        return {"status": "failure", "content": f"未知工具: {name}", "tool": name, "non_idempotent": non_idem}
+    # ask 询问档：敏感工具先问用户（拒绝 → not_executed）
     if _needs_ask(name):
         try:
             allowed = _ASK_HANDLER(name, args)
         except Exception:
             allowed = True
         if not allowed:
-            return f"⛔ 用户拒绝了 {name} 操作（权限 ask 档）"
-    try: return h(args, memory=memory)
-    except Exception as e: return f"执行出错: {e}"
+            return {"status": "not_executed", "content": f"⛔ 用户拒绝了 {name} 操作", "tool": name, "non_idempotent": non_idem}
+    try:
+        result = h(args, memory=memory)
+        # 工具内部主动标记 unknown（如网络中断但可能已生效）
+        if isinstance(result, dict) and result.get("__unknown__"):
+            return {"status": "unknown", "content": result.get("content", "结果未知"), "tool": name, "non_idempotent": non_idem}
+        content = str(result)
+        status = "failure" if content.lstrip().startswith("❌") else "success"
+        return {"status": status, "content": content, "tool": name, "non_idempotent": non_idem}
+    except Exception as e:
+        return {"status": "failure", "content": f"执行出错: {e}", "tool": name, "non_idempotent": non_idem}
 
 def _read_file(args,**kwargs):
     p=args["path"]
@@ -351,7 +402,7 @@ def _download_image(args, **kwargs):
         os.makedirs(config.IMAGES_DOWNLOADED_DIR, exist_ok=True)
         # 下载
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-        resp = requests.get(url, headers=headers, timeout=30, stream=True)
+        resp = _http_get(url, headers=headers, timeout=30, stream=True)
         resp.raise_for_status()
         with open(save_path, "wb") as f:
             for chunk in resp.iter_content(chunk_size=8192):
@@ -408,7 +459,7 @@ def _search_images(args, **kwargs):
     if config.SEARXNG_BASE_URL:
         try:
             import requests
-            resp = requests.get(
+            resp = _http_get(
                 f"{config.SEARXNG_BASE_URL}/search",
                 params={"q": query, "format": "json", "categories": "images", "pageno": 1},
                 timeout=15,
@@ -430,7 +481,7 @@ def _search_images(args, **kwargs):
             import requests, re
             from urllib.parse import quote
             url = f"https://www.bing.com/images/search?q={quote(query)}&FORM=HDRSC3"
-            resp = requests.get(
+            resp = _http_get(
                 url,
                 headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
                 timeout=15,
@@ -491,7 +542,7 @@ def _search_images_smart(args, **kwargs):
     candidates = []  # [(title, img_url, engine)]
     if config.SEARXNG_BASE_URL:
         try:
-            resp = requests.get(
+            resp = _http_get(
                 f"{config.SEARXNG_BASE_URL}/search",
                 params={"q": keywords, "format": "json", "categories": "images", "pageno": 1},
                 timeout=15,
@@ -534,7 +585,7 @@ def _search_images_smart(args, **kwargs):
         ext = os.path.splitext(img_url.split("?")[0])[1] or ".jpg"
         tmp_path = os.path.join(config.IMAGES_DOWNLOADED_DIR, f"_tmp_analyze_{idx}{ext}")
         try:
-            r = requests.get(img_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15, stream=True)
+            r = _http_get(img_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15, stream=True)
             r.raise_for_status()
             with open(tmp_path, "wb") as f:
                 for chunk in r.iter_content(8192):
@@ -620,7 +671,7 @@ def _describe_qq_images(message):
         try:
             p = os.path.join(config.IMAGES_DOWNLOADED_DIR,
                              f"qq_img_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{i}.jpg")
-            r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+            r = _http_get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
             if r.status_code != 200:
                 raise RuntimeError(f"HTTP {r.status_code}")
             with open(p, "wb") as f:
@@ -703,18 +754,58 @@ def _correct_memory(args,**kwargs):
     return f"已删除 {n} 条记错的记忆"
 
 
+_searxng_cache = {"ts": 0.0, "ok": None}
+
+def _searxng_ok(ttl: float = 60.0, timeout: float = 3.0) -> bool:
+    """探测 SearXNG 是否可用（短超时 + 60s 缓存）。没配置/连不上/非200 → 视为不可用，调用方立即切 Argo。"""
+    if not config.SEARXNG_BASE_URL:
+        return False
+    import time as _t
+    now = _t.time()
+    if _searxng_cache["ok"] is not None and (now - _searxng_cache["ts"]) < ttl:
+        return _searxng_cache["ok"]
+    ok = False
+    try:
+        import requests
+        resp = _http_get(f"{config.SEARXNG_BASE_URL}/search",
+                            params={"q": "测试", "format": "json"}, timeout=timeout)
+        ok = resp.status_code == 200
+    except Exception:
+        ok = False
+    _searxng_cache["ts"] = now
+    _searxng_cache["ok"] = ok
+    return ok
+
+
 def _web_search(args,**kwargs):
     q=args["query"]; mr=int(args.get("max_results",5)); results=[]
+    # SearXNG 可用性探测（短超时+缓存）：没开/连不上就立刻切 Argo，避免每次干等 15s
+    searxng_on = _searxng_ok() if config.SEARXNG_BASE_URL else False
+    searxng_down = bool(config.SEARXNG_BASE_URL) and not searxng_on
     # 方案一：SearXNG（自建元搜索引擎，聚合 Google/Bing/Wikipedia 等 70+ 引擎）
-    if config.SEARXNG_BASE_URL:
+    if searxng_on:
         try:
             import requests
-            resp=requests.get(f"{config.SEARXNG_BASE_URL}/search",params={"q":q,"format":"json","language":"zh-CN","categories":"general","pageno":1},timeout=15)
+            resp=_http_get(f"{config.SEARXNG_BASE_URL}/search",params={"q":q,"format":"json","language":"zh-CN","categories":"general","pageno":1},timeout=8)
             data=resp.json()
             for r in data.get("results",[])[:mr]:
                 results.append(f"{r.get('title','')}\n   {r.get('url','')}\n   {r.get('content','')[:200]}")
         except: pass
-    # 方案二：ddgs（新版 DuckDuckGo Search API）
+    # 方案二：Argo 专业搜索（SearXNG 无结果/不可用 → 切换）
+    if not results:
+        try:
+            argo_result = str(_argo_search(
+                {"query": q, "max_results": mr, "mode": "auto"},
+                **kwargs,
+            ) or "")
+            if argo_result and not argo_result.startswith((
+                "Argo 搜索无结果", "Argo 搜索出错", "Argo 未安装",
+            )):
+                reason = "SearXNG 未开启或连不上" if searxng_down else "SearXNG 无结果"
+                return f"{reason}，已切换到 Argo 搜索：\n" + argo_result
+        except Exception:
+            pass
+    # 方案三：ddgs（新版 DuckDuckGo Search API）
     if not results:
         try:
             from ddgs import DDGS
@@ -722,7 +813,7 @@ def _web_search(args,**kwargs):
             for r in ddgs.text(q,max_results=mr):
                 results.append(f"{r.get('title','')}\n   {r.get('href','')}\n   {r.get('body','')[:200]}")
         except: pass
-    # 方案三：旧版 duckduckgo_search 库
+    # 方案四：旧版 duckduckgo_search 库
     if not results:
         try:
             from duckduckgo_search import DDGS as DDGS_old
@@ -730,11 +821,11 @@ def _web_search(args,**kwargs):
             for r in ddgs.text(q,max_results=mr):
                 results.append(f"{r.get('title','')}\n   {r.get('href','')}\n   {r.get('body','')[:200]}")
         except: pass
-    # 方案四：DuckDuckGo HTML 直接抓取
+    # 方案五：DuckDuckGo HTML 直接抓取
     if not results:
         try:
             import requests,re; from urllib.parse import quote
-            resp=requests.get(f"https://html.duckduckgo.com/html/?q={quote(q)}",headers={"User-Agent":"Mozilla/5.0"},timeout=20)
+            resp=_http_get(f"https://html.duckduckgo.com/html/?q={quote(q)}",headers={"User-Agent":"Mozilla/5.0"},timeout=20)
             blocks=re.findall(r'<a rel="nofollow"[^>]*href="([^"]*)"[^>]*class="result__a"[^>]*>([^<]*)</a>',resp.text)[:mr]
             snippets=re.findall(r'class="result__snippet"[^>]*>(.*?)</(?:a|span)>',resp.text,re.DOTALL)[:mr]
             for i,(href,title) in enumerate(blocks):
@@ -833,7 +924,7 @@ def _read_url(args,**kwargs):
     # 1) 优先 Jina Reader：能渲染 JS、返回干净正文
     try:
         import requests
-        r=requests.get("https://r.jina.ai/"+url,headers={"User-Agent":"Mozilla/5.0","X-Return-Format":"text"},timeout=30)
+        r=_http_get("https://r.jina.ai/"+url,headers={"User-Agent":"Mozilla/5.0","X-Return-Format":"text"},timeout=30)
         if r.status_code==200 and r.text.strip():
             t=r.text.strip()
             return t[:3000]+("\n...(截断)" if len(t)>3000 else "")
@@ -841,7 +932,7 @@ def _read_url(args,**kwargs):
     # 2) 回退：直接抓 HTML 剥标签
     try:
         import requests,re
-        resp=requests.get(url,headers={"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},timeout=15)
+        resp=_http_get(url,headers={"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},timeout=15)
         resp.encoding=resp.apparent_encoding
         text=re.sub(r'<script[^>]*>.*?</script>','',resp.text,flags=re.DOTALL|re.IGNORECASE)
         text=re.sub(r'<style[^>]*>.*?</style>','',text,flags=re.DOTALL|re.IGNORECASE)
@@ -858,15 +949,29 @@ def _get_weather(args,**kwargs):
         import requests
         if location:
             from urllib.parse import quote
-            resp=requests.get(f"https://wttr.in/{quote(location)}?format=j1",headers={"User-Agent":"curl/8.0"},timeout=10)
+            resp=_http_get(f"https://wttr.in/{quote(location)}?format=j1",headers={"User-Agent":"curl/8.0"},timeout=12)
         else:
-            resp=requests.get("https://wttr.in?format=j1",headers={"User-Agent":"curl/8.0"},timeout=10)
+            resp=_http_get("https://wttr.in?format=j1",headers={"User-Agent":"curl/8.0"},timeout=12)
         data=resp.json()
         c=data["current_condition"][0]; area=data["nearest_area"][0]
-        return (f"🌤 {area['areaName'][0]['value']}, {area['country'][0]['value']}\n"
-                f"🌡 {c['temp_C']}°C (体感 {c['FeelsLikeC']}°C)\n"
-                f"☁ {c['weatherDesc'][0]['value']}\n"
-                f"💧 湿度 {c['humidity']}% | 🌬 风速 {c['windspeedKmph']}km/h")
+        place=f"{area['areaName'][0]['value']}, {area['country'][0]['value']}"
+        lines=[f"🌤 {place}",
+               f"🌡 {c['temp_C']}°C (体感 {c['FeelsLikeC']}°C)",
+               f"☁ {c['weatherDesc'][0]['value']}",
+               f"💧 湿度 {c['humidity']}% | 🌬 风速 {c['windspeedKmph']}km/h"]
+        # 🆕 未来几天预报（wttr.in j1 自带 weather[]，约 3 天）：不再依赖联网搜索
+        try:
+            forecast=data.get("weather",[]) or []
+            if forecast:
+                lines.append("")
+                lines.append("📅 未来几天：")
+                for d in forecast[:4]:
+                    date=str(d.get("date",""))[5:]  # MM-DD
+                    desc=(d.get("weatherDesc") or [{}])[0].get("value","")
+                    lines.append(f"  · {date}  {d.get('mintempC','?')}~{d.get('maxtempC','?')}°C  {desc}")
+        except Exception:
+            pass
+        return "\n".join(lines)
     except Exception as e:
         return f"天气查询失败: {e}"
 
@@ -889,12 +994,12 @@ def _search_wiki(args,**kwargs):
         import requests; from urllib.parse import quote
         search_url="https://zh.wikipedia.org/w/api.php"
         params={"action":"query","format":"json","list":"search","srsearch":q,"srlimit":3,"utf8":1}
-        resp=requests.get(search_url,params=params,headers={"User-Agent":"RikkaAI/1.0"},timeout=10)
+        resp=_http_get(search_url,params=params,headers={"User-Agent":"RikkaAI/1.0"},timeout=10)
         pages=resp.json().get("query",{}).get("search",[])
         if not pages: return f"维基百科未找到「{q}」"
         title=pages[0]["title"]
         params2={"action":"query","format":"json","titles":title,"prop":"extracts","exintro":1,"explaintext":1,"utf8":1}
-        resp2=requests.get(search_url,params=params2,headers={"User-Agent":"RikkaAI/1.0"},timeout=10)
+        resp2=_http_get(search_url,params=params2,headers={"User-Agent":"RikkaAI/1.0"},timeout=10)
         for pid,page in resp2.json().get("query",{}).get("pages",{}).items():
             if pid=="-1": continue
             text=page.get("extract","")[:2000]
@@ -943,7 +1048,7 @@ def _youtube_transcript(args,**kwargs):
             if lang in caps and caps[lang]:
                 chosen=caps[lang][-1]
                 try:
-                    r=requests.get(chosen.get("url",""),timeout=15)
+                    r=_http_get(chosen.get("url",""),timeout=15)
                     txt=re.sub(r"<[^>]+>","",r.text)
                     lines=[l.strip() for l in txt.splitlines()]
                     lines=[re.sub(r"^\d{2}:\d{2}:\d{2}[.,]\d{3}\s*","",l) for l in lines]
@@ -963,7 +1068,7 @@ def _jina_fetch(url):
     """用 Jina Reader 抓网页正文，成功返回文本，失败返回 None。"""
     try:
         import requests
-        r=requests.get("https://r.jina.ai/"+url,headers={"User-Agent":"Mozilla/5.0"},timeout=30)
+        r=_http_get("https://r.jina.ai/"+url,headers={"User-Agent":"Mozilla/5.0"},timeout=30)
         if r.status_code==200 and r.text.strip(): return r.text.strip()
     except Exception: pass
     return None
@@ -977,7 +1082,7 @@ def _github_repo(args,**kwargs):
         if path:
             # 1) 文件内容：先试 raw API，再试 raw.githubusercontent，最后 Jina 兜底
             h={"User-Agent":"RikkaAI/1.0","Accept":"application/vnd.github.raw"}
-            r=requests.get(f"{base}/contents/{path}",headers=h,timeout=15)
+            r=_http_get(f"{base}/contents/{path}",headers=h,timeout=15)
             ct=(r.headers.get("content-type","") or "").lower()
             if r.status_code==200 and "json" not in ct:
                 return f"📦 {repo} 文件 {path}:\n\n{r.text[:3000]}"
@@ -994,11 +1099,11 @@ def _github_repo(args,**kwargs):
             return "获取文件失败（GitHub API 限流，Jina 兜底也失败）"
         # 仓库概览：API 优先，Jina 兜底
         d=None
-        r=requests.get(base,headers={"User-Agent":"RikkaAI/1.0"},timeout=15)
+        r=_http_get(base,headers={"User-Agent":"RikkaAI/1.0"},timeout=15)
         if r.status_code==200:
             d=r.json()
             readme=""
-            r2=requests.get(f"{base}/readme",headers={"User-Agent":"RikkaAI/1.0","Accept":"application/vnd.github.raw"},timeout=15)
+            r2=_http_get(f"{base}/readme",headers={"User-Agent":"RikkaAI/1.0","Accept":"application/vnd.github.raw"},timeout=15)
             if r2.status_code==200 and "json" not in (r2.headers.get("content-type","") or "").lower():
                 readme=r2.text[:1500]
             if readme:
@@ -1064,7 +1169,10 @@ def _browser_task(args,**kwargs):
     except Exception as e:
         return f"浏览器任务失败: {e}"
 
-_OPENCLI_JS = r"[OPENCLI_PATH]"
+_OPENCLI_JS = os.path.join(
+    os.path.expanduser("~"), "AppData", "Roaming", "npm", "node_modules",
+    "@jackwener", "opencli", "dist", "src", "main.js",
+)
 _TWITTER_CLI = os.path.join(os.path.expanduser("~"), ".local", "bin", "twitter.exe")
 _AGENT_REACH_CFG = os.path.join(os.path.expanduser("~"), ".agent-reach", "config.yaml")
 
@@ -1106,9 +1214,9 @@ def _twitter_cli_env():
     # 代理（国内必须走 VPN）
     try:
         import config
-        proxy = getattr(config, "TWITTER_PROXY", "http://127.0.0.1:7897")
+        proxy = getattr(config, "TWITTER_PROXY", "")
     except Exception:
-        proxy = "http://127.0.0.1:7897"
+        proxy = ""
     if proxy:
         env.setdefault("HTTP_PROXY", proxy)
         env.setdefault("HTTPS_PROXY", proxy)
@@ -1355,32 +1463,30 @@ def _query_qq_contacts(args, **kwargs):
 def _generate_image(args, **kwargs):
     """AI 图片生成工具"""
     prompt = args.get("prompt", "")
-    model = args.get("model", "agnes-image-2.1-flash")
     n = int(args.get("n", 1))
     if not prompt:
         return "❌ 没有提供图片描述"
     try:
         import os as _os, requests, re
-        # 从 presets 查找 Agnes API key
-        api_key = ""
-        for p in config.get_presets():
-            if 'agnes' in p.get('name','').lower():
-                api_key = p.get('api_key', "")
-                break
+        preset = config.get_active_image_generation_preset()
+        if not preset:
+            return "❌ 未启用生图模型方案，请在设置 > 智能搜图中添加并启用方案"
+        api_key = preset.get("api_key", "")
         if not api_key:
-            for p in config.get_presets():
-                ak = p.get('api_key', "")
-                if ak and ak.startswith('sk-'):
-                    api_key = ak
-                    break
-        if not api_key:
-            return "❌ 未找到可用的 API Key，请在设置中添加 Agnes API Key"
+            return f"❌ 生图方案「{preset.get('name', '未命名')}」未配置 API Key"
+        model = str(args.get("model") or preset.get("model") or "").strip()
+        if not model:
+            return f"❌ 生图方案「{preset.get('name', '未命名')}」未配置模型"
+        api_base = str(preset.get("api_base") or "").strip().rstrip("/")
+        if not api_base:
+            return f"❌ 生图方案「{preset.get('name', '未命名')}」未配置请求地址"
+        endpoint = api_base if api_base.endswith("/images/generations") else f"{api_base}/images/generations"
 
         headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
         payload = {"model": model, "prompt": prompt, "n": min(n, 4)}
 
         resp = requests.post(
-            "https://apihub.agnes-ai.com/v1/images/generations",
+            endpoint,
             headers=headers, json=payload, timeout=120
         )
         result = resp.json()
@@ -1404,7 +1510,7 @@ def _generate_image(args, **kwargs):
             img_url = img.get("url", "")
             if not img_url:
                 continue
-            r = requests.get(img_url, timeout=30)
+            r = _http_get(img_url, timeout=30)
             ext = ".png"
             fn = f"六花_画_{safe_prompt}_{datetime.now().strftime('%H%M%S')}_{i}{ext}"
             path = _os.path.join(gen_dir, fn)
@@ -1461,22 +1567,6 @@ def _build_summary(args, **kwargs):
     except Exception as e:
         return "生成失败: " + str(e)
 
-def _speak(args, **kwargs):
-    """用六花的语音说话（fire-and-forget，返回立即）"""
-    try:
-        from brain.voice import get_engine
-        text = str(args.get("text", "")).strip()
-        if not text:
-            return "没给要说的话"
-        to = str(args.get("to", "local") or "local")
-        emotion = str(args.get("emotion", "neutral") or "neutral")
-        if emotion not in ("neutral", "happy", "sad"):
-            emotion = "neutral"
-        translation = args.get("translation") or None
-        return get_engine().speak(text, to, emotion=emotion, translation=translation)
-    except Exception as e:
-        return f"语音失败: {e}"
-
 _HANDLERS = {
     "read_file":_read_file,"write_file":_write_file,"edit_file":_edit_file,
     "list_directory":_list_directory,"search_files":_search_files,"grep_file":_grep_file,
@@ -1501,8 +1591,6 @@ _HANDLERS = {
     "query_qq_contacts":_query_qq_contacts,
     # AI 图片生成
     "generate_image":_generate_image,
-    # 语音
-    "speak":_speak,
     # 记忆总结
     "build_summary":_build_summary,
 }

@@ -26,11 +26,10 @@ from gui.input_panel import InputPanel
 from gui.character_widget import CharacterWidget, NavSidebar, SessionListPanel
 from gui.chat_page import ChatBackgroundPage
 from gui.chat_top_bar import ChatTopBar
-from gui.chat_insights import ChatInsightsPanel
-from gui.knowledge_page import KnowledgePage
+from gui.emotion_panel import EmotionStatusPanel
 from gui.dashboard_pages import HistoryPage, MemoryPage, SettingsPage
 from gui.home_widget import create_home_widget
-from brain.agent import AgentCore
+from brain.agent import AgentCore, strip_tool_narration
 import brain.history as history
 import brain.diary as diary_module
 
@@ -70,7 +69,7 @@ class TimerManager(QObject):
 
     def cancel_by_type(self, timer_type: str):
         """按类型取消所有定时器"""
-        self._timers = [t for t in self._timers if t[0] != timer_type]
+        self._timers = [t for t in self._timers if t[2] != timer_type]
 
     def list_pending(self) -> list:
         """列出待处理的定时器"""
@@ -102,7 +101,7 @@ class TimerManager(QObject):
 class QQBridgeSignals(QObject):
     connected = pyqtSignal()
     disconnected = pyqtSignal()
-    got_message = pyqtSignal(object, object, str, str)  # user_id, group_id, message, msg_type
+    got_message = pyqtSignal(object, object, str, str, str)  # user_id, group_id, message, msg_type, sender_name
     got_error = pyqtSignal(str)
 
 
@@ -114,6 +113,7 @@ class AgentWorker(QObject):
     finished = pyqtSignal(str)
     error = pyqtSignal(str)
     stream = pyqtSignal(str)
+    tool_call = pyqtSignal(str, str, str, str)  # cn_name, name, status, content
 
     def __init__(self, agent, text):
         super().__init__()
@@ -122,7 +122,11 @@ class AgentWorker(QObject):
 
     def run(self):
         try:
-            r = self.agent.chat(self._input, on_stream=lambda c: self.stream.emit(c))
+            r = self.agent.chat(
+                self._input,
+                on_stream=lambda c: self.stream.emit(c),
+                on_tool_call=lambda cn, name, status, content: self.tool_call.emit(cn, name, status, content),
+            )
             self.finished.emit(r)
         except Exception as e:
             self.error.emit(str(e))
@@ -139,37 +143,13 @@ class ImageWorker(QObject):
         from brain.tools import handle_tool_call
         try:
             r = handle_tool_call("describe_image", {"path": self._path, "prompt": "请详细描述图片内容"})
-            if r and not r.startswith("识图失败") and "执行出错" not in r:
-                self.done.emit(r[:500])
+            text = r.get("content", str(r)) if isinstance(r, dict) else str(r)
+            if text and not text.startswith("识图失败") and "执行出错" not in text:
+                self.done.emit(text[:500])
             else:
-                self.done.emit(f"[识图失败: {r}]")
+                self.done.emit(f"[识图失败: {text}]")
         except Exception as e:
             self.done.emit(f"[识图失败: {e}]")
-
-
-class ProactiveWorker(QObject):
-    """独立观察（摸鱼偷看）：截图 → 视觉分析 → 返回结构化描述。
-    分析只描述画面事实，不做情绪/意图推断（安全约束在 _on_proactive_peek 里进一步约束六花的表达）。"""
-    done = pyqtSignal(str, str)
-
-    def run(self):
-        try:
-            from PIL import ImageGrab
-            from brain.tools import _vision
-            d = config.SCREENSHOTS_DIR
-            os.makedirs(d, exist_ok=True)
-            p = os.path.join(d, f"proactive_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
-            ImageGrab.grab().save(p)
-            # 中立描述：只报画面里明确可见的东西，不要推测用户情绪/意图/进度
-            a = _vision(
-                "这是契约者屏幕的截图。请客观、简短地描述画面中明确可见的内容"
-                "（窗口标题、正在播放/编辑的内容、明显的界面元素等）。"
-                "只描述看到的事实，不要猜测契约者在做什么、心情如何、进度如何。30字以内。",
-                p, 0.2, 300,
-            )
-            self.done.emit(a, p)
-        except Exception:
-            self.done.emit("", "")
 
 
 class MemoryCueWorker(QObject):
@@ -323,8 +303,8 @@ class MainWindow(QMainWindow):
     _period_summary_done = pyqtSignal(str, str)
     # 敏感工具权限弹窗：后台线程 emit（Queued 到主线程），槽在主线程创建 QMessageBox
     _ask_dialog_signal = pyqtSignal(str, str)
-    # 主动冲浪完成信号（后台线程 → 主线程聊天区推荐）
-    _surf_result_signal = pyqtSignal(str)
+    # 内驱引擎事件信号（冲浪工作线程 → 主线程：见闻收尾/冒泡决策）
+    _drive_event_signal = pyqtSignal(str)
 
     def __init__(self):
         super().__init__()
@@ -334,6 +314,12 @@ class MainWindow(QMainWindow):
         self.resize(config.WINDOW_WIDTH, config.WINDOW_HEIGHT)
 
         # 核心模块
+        # 上线前：启动时自动备份核心数据库（保留最近 10 份），失败不影响启动
+        try:
+            from brain import backup as _backup
+            _backup.backup_all()
+        except Exception:
+            pass
         self.agent = AgentCore()
         self.agent.start_session()
 
@@ -352,16 +338,21 @@ class MainWindow(QMainWindow):
             disconnected=lambda: self._qq_signals.disconnected.emit(),
         )
 
-        # 语音引擎（六花自己决定何时开口）
-        from brain.voice import get_engine as _get_voice_engine
-        self._voice = _get_voice_engine()
-        self._voice.signals.voice_ready.connect(self._on_voice_ready)
+        # 语音引擎（六花自己决定何时开口）——语音功能默认下线（VOICE_ENABLED=False）
+        self._voice = None
+        self._voice_server = None
         self._audio_player = None  # QMediaPlayer，惰性创建
+        if config.VOICE_ENABLED:
+            from brain.voice import get_engine as _get_voice_engine
+            self._voice = _get_voice_engine()
+            self._voice.signals.voice_ready.connect(self._on_voice_ready)
+            self._voice.signals.voice_synthesizing.connect(self._on_voice_synthesizing)
+            self._voice.signals.voice_synthesis_done.connect(self._on_voice_synthesis_done)
 
-        # 本地 GPT-SoVITS 语音服务管理器（首页 AI 音乐卡片开关）
-        from brain.voice_server import get_voice_server as _get_voice_server
-        self._voice_server = _get_voice_server()
-        self._voice_server.signals.status_changed.connect(self._on_voice_server_status)
+            # 本地 GPT-SoVITS 语音服务管理器（首页 AI 音乐卡片开关）
+            from brain.voice_server import get_voice_server as _get_voice_server
+            self._voice_server = _get_voice_server()
+            self._voice_server.signals.status_changed.connect(self._on_voice_server_status)
 
         # 会话
         last_id = config.load_last_session()
@@ -420,15 +411,31 @@ class MainWindow(QMainWindow):
         self._ask_dialog_signal.connect(self._on_ask_dialog)
         self._ask_evt = threading.Event()
         self._ask_result = {}
-        # 主动冲浪（定期去B站推荐视频）
-        self._surf_result_signal.connect(self._on_surf_result)
-        self._last_surf_ts = time.time()
-        self._surf_thread = None
+        # 内驱引擎（麦麦式自主性：心跳闸门 → 偷偷冲浪 → 见闻存货/概率冒泡）
+        from brain.inner_drive import get_engine as _get_drive_engine
+        self._drive = _get_drive_engine()
+        self._drive.configure(
+            is_busy=lambda: (self._worker_thread is not None and self._worker_thread.isRunning())
+            or (self._proactive_thread is not None and self._proactive_thread.isRunning()),
+            last_activity=lambda: self._last_activity.timestamp(),
+            get_needs=lambda: getattr(self.agent, "_needs", None),
+        )
+        self._drive_event_signal.connect(self._on_drive_event)
+        self._drive_thread = None
         self._surf_timer = QTimer(self)
-        self._surf_timer.setInterval(60 * 1000)  # 每分钟检查一次（轻量）
-        self._surf_timer.timeout.connect(self._check_auto_surf)
+        self._surf_timer.setInterval(60 * 1000)  # 心跳：每分钟一次廉价决策（无 LLM）
+        self._surf_timer.timeout.connect(self._on_inner_drive_tick)
         if getattr(config, "SURF_AUTO_ENABLED", False):
             self._surf_timer.start()
+        # ── 桌面感知（LingChat 式主动窥屏）：定期分类桌面状态供主动聊天差异化关心 ──
+        self._screen_sense_timer = QTimer(self)
+        self._screen_sense_timer.setInterval(
+            max(5, int(getattr(config, "SCREEN_SENSE_INTERVAL_MIN", 12))) * 60 * 1000
+        )
+        self._screen_sense_timer.timeout.connect(self._run_screen_sense)
+        if getattr(config, "SCREEN_SENSE_ENABLED", True):
+            self._screen_sense_timer.start()
+            QTimer.singleShot(90 * 1000, self._run_screen_sense)  # 启动 90 秒后先感知一次
         # ── Archivist 记忆档案员（每 2 分钟轻量层；闲置/碎片多时后台跑深度层叙事归并） ──
         self._archivist_thread = None
         self._archivist_timer = QTimer(self)
@@ -448,9 +455,7 @@ class MainWindow(QMainWindow):
         # ⏹ 停止按钮状态：抑制迟到语音 + 作废在途屏幕偷看
         self._voice_suppressed = False  # 叫停后抑制迟到的 voice_ready
         self._response_suppressed = False  # 叫停后抑制迟到的 LLM 回复（停止纪元）
-        self._action_epoch = 0          # 每次叫停 +1，作废在途的屏幕偷看结果
-        self._peek_epoch = 0            # 屏幕偷看启动时的 epoch
-        self._last_observe_ts = 0.0     # 上次观察（摸鱼偷看）时间戳，独立冷却用
+        self._action_epoch = 0          # 每次叫停 +1，作废在途的后台结果
         self._active_cue_id = None      # 当前主动回复消费的记忆唤起 cue id（回复完成后标记 delivered）
         self._active_appearance_key = None
         self._appearance_animation = None
@@ -564,7 +569,6 @@ class MainWindow(QMainWindow):
         self.input_panel.send_message.connect(self._on_user_input)
         self.input_panel.send_image.connect(self._on_user_image)
         self.input_panel.open_tools.connect(self._open_tools)
-        self.input_panel.open_knowledge.connect(self._show_knowledge)
         self.input_panel.qq_bridge_requested.connect(self._toggle_qq_bridge_modern)
         self.input_panel.voice_toggle_requested.connect(self._toggle_voice)
         self.input_panel.gptsovits_service_requested.connect(self._toggle_gptsovits_service)
@@ -605,8 +609,9 @@ class MainWindow(QMainWindow):
     def _load_theme(self):
         styles = []
         for filename in (
-            "theme.qss", "home.qss", "chat.qss", "knowledge.qss", "diary.qss",
+            "theme.qss", "home.qss", "chat.qss", "diary.qss",
             "dashboard_pages.qss", "memory.qss", "surf_history.qss",
+            "sleep_compute.qss",
         ):
             path = os.path.join(config.STYLES_DIR, filename)
             if os.path.exists(path):
@@ -626,13 +631,14 @@ class MainWindow(QMainWindow):
         theme_manager.set_active_theme(appearance)
         if self._base_stylesheet:
             self.setStyleSheet(
-                self._base_stylesheet + "\n" + theme_manager.theme_override(appearance)
+                self._base_stylesheet
+                + "\n"
+                + theme_manager.theme_override(appearance)
             )
 
         page_specs = (
             (getattr(self, "home_widget", None), "home"),
             (getattr(self, "_chat_page", None), "chat"),
-            (getattr(self, "knowledge_page", None), "knowledge"),
             (getattr(self, "diary_page", None), "diary"),
             (getattr(self, "history_page", None), "history"),
             (getattr(self, "surf_history_page", None), "surfing"),
@@ -833,7 +839,6 @@ class MainWindow(QMainWindow):
         self.nav_sidebar.chat_requested.connect(self._show_chat)
         self.nav_sidebar.history_requested.connect(self._open_history)
         self.nav_sidebar.memo_requested.connect(self._open_notes)
-        self.nav_sidebar.summary_requested.connect(self._show_knowledge)
         self.nav_sidebar.diary_requested.connect(self._open_diary)
         self.nav_sidebar.surf_requested.connect(self._open_surf_history)
         self.nav_sidebar.tools_requested.connect(self._open_tools)
@@ -847,7 +852,6 @@ class MainWindow(QMainWindow):
         self.home_widget.chat_requested.connect(self._show_chat)
         self.home_widget.history_requested.connect(self._open_history)
         self.home_widget.memo_requested.connect(self._open_notes)
-        self.home_widget.summary_requested.connect(self._show_knowledge)
         self.home_widget.tools_requested.connect(self._open_tools)
         self.home_widget.settings_requested.connect(self._open_settings)
         self.home_widget.session_selected.connect(self._load_session)
@@ -857,15 +861,6 @@ class MainWindow(QMainWindow):
         if hasattr(self.home_widget, "voice_action"):
             self.home_widget.voice_action.connect(self._on_home_voice_action)
         self._workspace_stack.addWidget(self.home_widget)
-
-        self.knowledge_page = KnowledgePage()
-        self.knowledge_page.history_requested.connect(self._open_history)
-        self.knowledge_page.memo_requested.connect(self._open_notes)
-        self.knowledge_page.tools_requested.connect(self._open_tools)
-        self.knowledge_page.settings_requested.connect(self._open_settings)
-        self.knowledge_page.window_action.connect(self._handle_window_action)
-        self.knowledge_page.window_drag.connect(self._handle_window_drag)
-        self._workspace_stack.addWidget(self.knowledge_page)
 
         from gui.diary_page import DiaryPage
         self.diary_page = DiaryPage()
@@ -895,6 +890,10 @@ class MainWindow(QMainWindow):
 
         self.settings_page = SettingsPage()
         self.settings_page.config_changed.connect(self._on_config_changed)
+        try:
+            self.settings_page.drive_command.connect(self._on_drive_command)
+        except Exception:
+            pass
         self._connect_dashboard_page(self.settings_page)
         self._workspace_stack.addWidget(self.settings_page)
 
@@ -947,7 +946,6 @@ class MainWindow(QMainWindow):
         self.input_panel.send_message.connect(self._on_user_input)
         self.input_panel.send_image.connect(self._on_user_image)
         self.input_panel.open_tools.connect(self._open_tools)
-        self.input_panel.open_knowledge.connect(self._show_knowledge)
         self.input_panel.qq_bridge_requested.connect(self._toggle_qq_bridge_modern)
         self.input_panel.voice_toggle_requested.connect(self._toggle_voice)
         self.input_panel.gptsovits_service_requested.connect(self._toggle_gptsovits_service)
@@ -955,8 +953,11 @@ class MainWindow(QMainWindow):
         rl.addWidget(self.input_panel)
         content_row_layout.addWidget(rp, 1)
 
-        self.chat_insights = ChatInsightsPanel()
-        content_row_layout.addWidget(self.chat_insights)
+        self.emotion_panel = EmotionStatusPanel()
+        self.emotion_panel.values_edited.connect(self._apply_emotion_edits)
+        self.emotion_panel.locks_changed.connect(self._apply_emotion_locks)
+        self.emotion_panel.set_locked(getattr(self.agent, "_emotion_locks", set()))
+        content_row_layout.addWidget(self.emotion_panel)
         content_outer.addWidget(content_row, 1)
 
         self.chat_top_bar = ChatTopBar()
@@ -1025,6 +1026,10 @@ class MainWindow(QMainWindow):
         self._apply_home_chrome(True)
 
         self._set_qq_button_state("offline", "QQ 离线")
+        try:
+            self.emotion_panel.refresh(self.agent.get_emotion_snapshot())
+        except Exception:
+            pass
 
     def _refresh_widget_style(self, widget):
         widget.style().unpolish(widget)
@@ -1049,14 +1054,6 @@ class MainWindow(QMainWindow):
                     self.session_panel.refresh_sessions(self._session_id),
                     self._refresh_chat_insights(),
                 ),
-            )
-
-    def _show_knowledge(self):
-        if hasattr(self, "knowledge_page"):
-            self._switch_workspace(
-                self.knowledge_page,
-                "knowledge",
-                refresh=self.knowledge_page.refresh_data,
             )
 
     def _open_diary(self):
@@ -1094,6 +1091,7 @@ class MainWindow(QMainWindow):
         self._workspace_stack.setCurrentWidget(page)
         self._apply_home_chrome(is_home)
         self.nav_sidebar.set_active_section(section)
+        self._refresh_widget_style(self.nav_sidebar)
         if refresh is not None:
             QTimer.singleShot(30, refresh)
         self._animate_workspace_transition(snapshot)
@@ -1163,8 +1161,8 @@ class MainWindow(QMainWindow):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        if hasattr(self, "chat_insights"):
-            self.chat_insights.setVisible(self.width() >= 1160)
+        if hasattr(self, "emotion_panel"):
+            self.emotion_panel.setVisible(self.width() >= 1228)
 
     def _handle_window_drag(self, screen_x, screen_y, phase):
         cursor = QPoint(screen_x, screen_y)
@@ -1260,6 +1258,7 @@ class MainWindow(QMainWindow):
         self._worker.moveToThread(thread)
         thread.started.connect(self._worker.run)
         self._worker.stream.connect(lambda c, s=sid: self._on_stream(s, c))
+        self._worker.tool_call.connect(lambda cn, name, st, content, s=sid: self._on_tool_call(s, cn, st))
         self._worker.finished.connect(lambda r, s=sid, t=thread: self._on_response_finished(s, r, t))
         self._worker.error.connect(lambda e, s=sid, t=thread: self._on_response_error(s, e, t))
         thread.finished.connect(thread.deleteLater)
@@ -1300,6 +1299,7 @@ class MainWindow(QMainWindow):
         self._worker.moveToThread(self._worker_thread)
         self._worker_thread.started.connect(self._worker.run)
         self._worker.stream.connect(lambda c, s=sid: self._on_stream(s, c))
+        self._worker.tool_call.connect(lambda cn, name, st, content, s=sid: self._on_tool_call(s, cn, st))
         self._worker.finished.connect(lambda r, s=sid: self._on_response_finished(s, r))
         self._worker.error.connect(lambda e, s=sid: self._on_response_error(s, e))
         self._worker_thread.finished.connect(self._worker_thread.deleteLater)
@@ -1307,6 +1307,27 @@ class MainWindow(QMainWindow):
 
     def _on_stream(self, sid, chunk):
         self.chat_widget.append_stream(sid, chunk)
+
+    def _on_tool_call(self, sid, cn_name, status):
+        """六花调用工具完成 → 聊天框插入一条左对齐系统气泡，让人一眼看到她在干嘛。"""
+        if status == "not_executed":
+            bubble = f"⏸️ 六花尝试调用「{cn_name}」但被暂停/跳过"
+        elif status == "failure":
+            bubble = f"⚠️ 六花调用「{cn_name}」出错了"
+        elif status == "unknown":
+            bubble = f"🛠 六花已调用「{cn_name}」，结果暂不确定"
+        else:
+            bubble = f"🛠 六花已调用「{cn_name}」工具"
+        try:
+            self.chat_widget.add_system_bubble(bubble)
+        except Exception:
+            pass
+        # 持久化到历史：重进会话时仍能在对话里看到工具调用提示
+        try:
+            from brain import history as _hist
+            _hist.add_message(sid, "system", bubble)
+        except Exception:
+            pass
 
     # ── 响应完成（核心：处理图片 + 定时器 + 历史） ─────────────
 
@@ -1335,10 +1356,21 @@ class MainWindow(QMainWindow):
 
         # 安全地拿下流式文字（异常时也不影响后续图片处理）
         text = ""
+        _split_enabled = False
+        try:
+            from brain.features import is_enabled as _feat_on
+            _split_enabled = _feat_on("split_reply_enabled")
+        except Exception:
+            _split_enabled = False
         try:
             if has_images:
                 text = self.chat_widget.pop_streaming_bubble(sid)
+            elif _split_enabled:
+                # 🆕 分段发送：先拿走单条流式气泡（删除），稍后按句子拆成多条补上
+                text = self.chat_widget.pop_streaming_bubble(sid)
             else:
+                # 流式期间可能已打出"口头调用工具"旁白 → 用清洗后的最终回复覆盖气泡
+                self.chat_widget.finalize_streaming_text(sid, response)
                 self.chat_widget.stop_streaming(sid)
         except Exception:
             if not has_images:
@@ -1356,7 +1388,7 @@ class MainWindow(QMainWindow):
 
         # 1b. 有图时，文字放在图片后面
         if has_images and text:
-            self.chat_widget.add_message(text, is_user=False)
+            self.chat_widget.add_message(strip_tool_narration(text), is_user=False)
 
         # 2. 处理 AI 设置的主动定时器（_PENDING_TIMERS）
         try:
@@ -1385,6 +1417,11 @@ class MainWindow(QMainWindow):
                 history.add_message(sid, "assistant", text_to_store)
             except Exception:
                 pass
+
+        # 4. 📱 莲心式分段发送：把一条回复按句子拆成多条短消息，随机1~3s逐条发出（历史已存完整版）
+        if (not has_images) and _split_enabled and response:
+            self._deliver_split_reply(sid, response)
+
         self._refresh_chat_insights()
 
         if self.agent.history and len(self.agent.history) == 3:
@@ -1396,6 +1433,34 @@ class MainWindow(QMainWindow):
 
         if self._in_proactive:
             self._in_proactive = False
+
+    def _deliver_split_reply(self, sid, response):
+        """📱 莲心式分段发送：把一条回复按句号/换行拆成若干短条，随机1~3s逐条作为气泡发出去。"""
+        try:
+            from brain import segmenter as _seg
+            if not _seg.is_enabled():
+                self.chat_widget.add_message(response, is_user=False)
+                return
+            plan = _seg.delivery_plan(response)
+            if not plan:
+                self.chat_widget.add_message(response, is_user=False)
+                return
+            delay_acc = 0.0
+            for seg in plan:
+                delay_acc += float(seg.get("gap_sec", 1.5))
+                txt = seg.get("text", "")
+                QTimer.singleShot(int(delay_acc * 1000), lambda t=txt: self._deliver_one(sid, t))
+        except Exception:
+            try:
+                self.chat_widget.add_message(response, is_user=False)
+            except Exception:
+                pass
+
+    def _deliver_one(self, sid, text):
+        try:
+            self.chat_widget.add_message(text, is_user=False)
+        except Exception:
+            pass
 
     def _on_response_error(self, sid, em, thread=None):
         if thread is not None and thread is not self._worker_thread:
@@ -1508,6 +1573,8 @@ class MainWindow(QMainWindow):
     # ── 🎙 本地 GPT-SoVITS 语音服务（首页 AI 音乐卡片） ──────────
 
     def _on_home_voice_action(self, action):
+        if self._voice_server is None:
+            return  # 语音功能已下线
         if action == "start":
             self._voice_server.start()
         elif action == "stop":
@@ -1516,6 +1583,8 @@ class MainWindow(QMainWindow):
     def _toggle_gptsovits_service(self):
         """输入区「语音服务」按钮：会话里弹系统消息 + 进度条，加载完变「正在运行」。"""
         sv = self._voice_server
+        if sv is None:
+            return  # 语音功能已下线
         st = sv.status()["state"]
         if st == "ready":
             self.chat_widget.add_message("✅ GPT-SoVITS 语音服务正在运行", is_user=False)
@@ -1638,10 +1707,20 @@ class MainWindow(QMainWindow):
         self._qq_signals.got_message.emit(user_id, group_id, message, msg_type)
         return None
 
-    def _on_qq_message_threadsafe(self, user_id, group_id, message, msg_type):
+    def _on_qq_message_bg(self, user_id: int, group_id: int, message: str, msg_type: str, sender_name: str = ""):
+        """后台线程收到 QQ 消息 → 通过信号桥发到主线程处理"""
+        print(f"[QQ] 桥线程收到 user={user_id} type={msg_type} msg={message[:40]!r}", flush=True)
+        self._qq_signals.got_message.emit(user_id, group_id, message, msg_type, sender_name)
+        return None
+
+    def _on_qq_message_threadsafe(self, user_id, group_id, message, msg_type, sender_name=""):
         """主线程：后台处理 QQ 消息，不阻塞 UI"""
         print(f"[QQ] 主线程收到 user={user_id} type={msg_type} msg={message[:40]!r}", flush=True)
         self._voice_suppressed = False  # QQ 新消息到来，语音恢复
+        # 群消息 → 群聊链路（共享会话上下文 + 回复意愿闸门）
+        if msg_type == "group" and group_id:
+            self._handle_group_message(user_id, group_id, message, sender_name)
+            return
         # 同用户串行化：上一条还在回复（含 3 秒思考延迟）时，丢弃新消息，避免共享 AgentCore 并发串扰
         if user_id in self._qq_busy:
             print(f"[QQ] user={user_id} 正在回复中，丢弃新消息", flush=True)
@@ -1665,8 +1744,16 @@ class MainWindow(QMainWindow):
             # 获取该 QQ 号独立的 AgentCore
             qq_agent = self._get_qq_agent(user_id)
 
-            # 检查操作权限
+            # 检查操作权限（通道身份代码判定，对话内容无法改变）
             restricted = user_id not in config.QQ_ALLOWED_USERS if config.QQ_ALLOWED_USERS else True
+            if restricted:
+                # 访客输入审计：命中授权话术/越狱指令只留痕（防线在工具白名单+执行护栏）
+                try:
+                    from brain import guard as _guard
+                    if _guard.audit_incoming(user_id, message):
+                        print(f"[GUARD] 访客 user={user_id} 消息命中注入话术，已留痕", flush=True)
+                except Exception:
+                    pass
 
             # 先「思考」几秒再开始回复（像真人那样），不阻塞主线程
             delay_ms = int(getattr(config, "QQ_REPLY_THINK_DELAY", 3) * 1000)
@@ -1736,6 +1823,8 @@ class MainWindow(QMainWindow):
             return  # 已正常完成或已兜底过
         settled.set()
         self._qq_busy.discard(user_id)
+        if group_id:
+            self._qq_busy.discard(f"group:{group_id}")
         print(f"[QQ] 看门狗触发：回复超时，发兜底 user={user_id}", flush=True)
         try:
             self.chat_widget.stop_streaming(sid)
@@ -1761,6 +1850,92 @@ class MainWindow(QMainWindow):
             self._qq_agents[user_id] = agent
         return self._qq_agents[user_id]
 
+    # ── QQ 群聊：共享会话上下文 + 麦麦式回复意愿闸门 ──────────────
+
+    def _get_group_agent(self, group_id):
+        """一个群 = 一个共享 AgentCore：全群消息进同一条上下文流（麦麦式按会话建心流）。"""
+        if not hasattr(self, "_group_agents"):
+            self._group_agents = {}
+        if group_id not in self._group_agents:
+            agent = AgentCore()
+            agent.start_session()
+            agent.set_group_mode(True)
+            self._group_agents[group_id] = agent
+        return self._group_agents[group_id]
+
+    def _group_presence_note(self, group_id, is_rikka: bool):
+        """记录一条群消息事件（含她的回复），供存在感统计。"""
+        if not hasattr(self, "_group_presence"):
+            self._group_presence = {}
+        import collections
+        dq = self._group_presence.setdefault(group_id, collections.deque(maxlen=60))
+        dq.append((time.time(), bool(is_rikka)))
+
+    def _group_presence_stats(self, group_id) -> tuple:
+        """最近 5 分钟窗口内（她的发言数, 群消息总数）。"""
+        import collections
+        dq = getattr(self, "_group_presence", {}).get(group_id)
+        if not dq:
+            return 0, 0
+        cutoff = time.time() - 300
+        recent = [(ts, r) for ts, r in dq if ts >= cutoff]
+        return sum(1 for _, r in recent if r), len(recent)
+
+    def _handle_group_message(self, user_id, group_id, message, sender_name):
+        """群消息入口：清洗 → 评分闸门 → 达标才回复，其余只写入共享上下文（潜水旁听）。"""
+        try:
+            from brain import group_chat as gc
+            try:
+                self_qq = int(self._qq_bridge.get_self_qq() or 0)
+            except Exception:
+                self_qq = 0
+            if not hasattr(self, "_group_card_cache"):
+                self._group_card_cache = {}
+            cache = self._group_card_cache.setdefault(group_id, {})
+            name = (sender_name or "").strip() or cache.get(user_id) or f"QQ{user_id}"
+            if sender_name:
+                cache[user_id] = name
+            clean = gc.clean_cq(message, self_qq=self_qq, name_of=lambda q: cache.get(int(q)))
+            at_me = bool(self_qq) and f"[CQ:at,qq={self_qq}]" in str(message)
+            mention_me = "六花" in clean
+
+            group_agent = self._get_group_agent(group_id)
+            my_recent, window = self._group_presence_stats(group_id)
+            mode = str(getattr(config, "QQ_GROUP_MODE", "smart"))
+            threshold = int(getattr(config, "QQ_GROUP_SCORE_THRESHOLD", 60))
+            reply, score, reasons = gc.should_reply(
+                clean, at_me=at_me, mention_me=mention_me, mode=mode,
+                my_recent=my_recent, window=window, threshold=threshold)
+            self._group_presence_note(group_id, is_rikka=reply)
+            print(f"[GROUP] 群{group_id} {name}: {clean[:30]!r} → 评分={score} "
+                  f"{'回复' if reply else '潜水'} ({';'.join(reasons)})", flush=True)
+
+            line = f"{name}(QQ{user_id})：{clean}"
+            gkey = f"group:{group_id}"
+            if not reply:
+                group_agent.observe(line)   # 潜水旁听：进上下文，不说话
+                return
+            if user_id in self._qq_busy or gkey in self._qq_busy:
+                group_agent.observe(line)   # 正在回复中：只记上下文，不叠加回复
+                return
+            self._qq_busy.add(user_id)
+            self._qq_busy.add(gkey)
+            # 信任级别随说话人：白名单成员=契约者级，其他群友=访客级（工具白名单/护栏生效）
+            restricted = user_id not in config.QQ_ALLOWED_USERS if config.QQ_ALLOWED_USERS else True
+            if restricted:
+                try:
+                    from brain import guard as _guard
+                    if _guard.audit_incoming(user_id, clean):
+                        print(f"[GUARD] 群访客 user={user_id} 消息命中注入话术，已留痕", flush=True)
+                except Exception:
+                    pass
+            group_agent.set_restricted(restricted)
+            delay_ms = int(getattr(config, "QQ_REPLY_THINK_DELAY", 3) * 1000)
+            QTimer.singleShot(delay_ms, lambda: self._start_qq_worker(
+                group_agent, line, user_id, group_id, "group", restricted, self._session_id))
+        except Exception as e:
+            print(f"[GROUP] 群消息处理失败: {e}", flush=True)
+
     def _on_qq_done(self, sid, response, user_id, group_id, msg_type, settled=None):
         """QQ 回复完成 → 显示 + 发文字/图片到 QQ（线程已自回收，不阻塞主线程）"""
         # 看门狗兜底已经处理过 → 跳过，避免重复回复
@@ -1770,6 +1945,8 @@ class MainWindow(QMainWindow):
                 return
             settled.set()
         self._qq_busy.discard(user_id)
+        if group_id:
+            self._qq_busy.discard(f"group:{group_id}")
         # 移除流式气泡，避免桌面残留一个看起来"卡死"的半截气泡
         try:
             self.chat_widget.pop_streaming_bubble(sid)
@@ -1781,6 +1958,7 @@ class MainWindow(QMainWindow):
             response = "……（唔，我这边好像卡了一下，那句话没组织好，你能再发一次吗？）"
 
         self.chat_widget.add_message(f"💬 [六花→QQ] {response}", is_user=False)
+        self._refresh_chat_insights()
 
         # 发送文字到 QQ（失败重试一次，WS 可能短暂抖动）
         ok = False
@@ -1818,11 +1996,14 @@ class MainWindow(QMainWindow):
                 return
             settled.set()
         self._qq_busy.discard(user_id)
+        if group_id:
+            self._qq_busy.discard(f"group:{group_id}")
         try:
             self.chat_widget.stop_streaming(sid)
         except Exception:
             pass
         self.chat_widget.add_message(f"💬 QQ回复出错: {err}", is_user=False)
+        self._refresh_chat_insights()
         # 出错也不让 QQ 那头死寂，发一条兜底
         if user_id or group_id:
             try:
@@ -1859,6 +2040,8 @@ class MainWindow(QMainWindow):
 
     def _toggle_voice(self):
         """静音开关：切换语音总开关"""
+        if self._voice is None:
+            return  # 语音功能已下线
         enabled = not config.VOICE_ENABLED
         config.set_voice_enabled(enabled)
         try:
@@ -1885,6 +2068,20 @@ class MainWindow(QMainWindow):
                 self._play_audio(path)   # 兜底：退回共享播放器
         if "qq" in to:
             self._send_voice_qq(path, qq_target)
+
+    def _on_voice_synthesizing(self, status_text, text):
+        """语音合成开始：显示进度气泡"""
+        try:
+            self.chat_widget.show_voice_synthesizing(text)
+        except Exception as e:
+            print("显示语音合成进度失败:", e)
+
+    def _on_voice_synthesis_done(self):
+        """语音合成完成或失败：移除进度气泡"""
+        try:
+            self.chat_widget.remove_voice_synthesizing()
+        except Exception as e:
+            print("移除语音合成进度失败:", e)
 
     def _play_audio(self, path):
         """用 QMediaPlayer 本地播放语音"""
@@ -1941,24 +2138,10 @@ class MainWindow(QMainWindow):
             return
 
         if timer_type == "proactive":
+            # 旧的"摸鱼偷看"分支已下线：桌面感知改为独立定时器（_screen_sense_timer），
+            # 感知结果经 _build_proactive_prompt 注入，链式主动统一走这里
             self._in_proactive = True
-            # 独立观察（摸鱼彩蛋）：开关 + 独立冷却 + 配置概率；命中则偷看屏幕，否则普通主动聊天
-            observe_ok = (
-                config.PROACTIVE_SLACK_ENABLED
-                and (time.time() - self._last_observe_ts) >= config.PROACTIVE_SLACK_COOLDOWN * 60
-            )
-            if observe_ok and random.randint(1, 100) <= int(config.PROACTIVE_SLACK_PROB):
-                self._last_observe_ts = time.time()
-                self._peek_epoch = self._action_epoch
-                self._proactive_thread = QThread(self)
-                self._proactive_worker = ProactiveWorker()
-                self._proactive_worker.moveToThread(self._proactive_thread)
-                self._proactive_worker.done.connect(self._on_proactive_peek)
-                self._proactive_thread.started.connect(self._proactive_worker.run)
-                self._proactive_thread.finished.connect(self._proactive_thread.deleteLater)
-                self._proactive_thread.start()
-            else:
-                self._do_proactive_chat()
+            self._do_proactive_chat()
         elif timer_type == "follow_up":
             self._in_proactive = True
             reason = context.get("reason", "想契约者了")
@@ -1975,53 +2158,20 @@ class MainWindow(QMainWindow):
             self._worker.moveToThread(self._worker_thread)
             self._worker_thread.started.connect(self._worker.run)
             self._worker.stream.connect(lambda c, s=sid: self._on_stream(s, c))
+            self._worker.tool_call.connect(lambda cn, name, st, content, s=sid: self._on_tool_call(s, cn, st))
             self._worker.finished.connect(lambda r, s=sid: self._on_response_finished(s, r))
             self._worker.error.connect(lambda e, s=sid: self._on_response_error(s, e))
             self._worker_thread.finished.connect(self._worker_thread.deleteLater)
             self._worker_thread.start()
 
-    def _do_proactive_chat(self):
-        """执行链式主动对话"""
-        prompt = self._build_proactive_prompt()
-        sid = self._session_id
-        self.chat_widget.set_current_session(sid)
-        self.chat_widget.start_streaming(sid)
-        self._worker_thread = QThread(self)
-        self._worker = AgentWorker(self.agent, prompt)
-        self._worker.moveToThread(self._worker_thread)
-        self._worker_thread.started.connect(self._worker.run)
-        self._worker.stream.connect(lambda c, s=sid: self._on_stream(s, c))
-        self._worker.finished.connect(lambda r, s=sid: self._on_response_finished(s, r))
-        self._worker.error.connect(lambda e, s=sid: self._on_response_error(s, e))
-        self._worker_thread.finished.connect(self._worker_thread.deleteLater)
-        self._worker_thread.start()
-
-    def _on_proactive_peek(self, analysis, img_path):
-        """屏幕偷看结果 → 发给 AI"""
-        # ⏹ 已被叫停：偷看结果作废，不再 new 回复线程
-        if self._action_epoch != self._peek_epoch:
-            self._proactive_thread = None
-            self._proactive_worker = None
-            return
-        if self._proactive_thread:
-            self._proactive_thread.quit()
-            self._proactive_thread.wait()
-            self._proactive_thread = None
-            self._proactive_worker = None
-        if analysis:
-            prompt = (
-                f"【系统通知 ✦ 链式主动（观察）】\n"
-                f"你刚刚看到契约者的屏幕画面：{analysis}\n"
-                f"用六花的语气自然地聊聊这个画面。\n\n"
-                f"【观察安全约束】\n"
-                f"1. 只能引用画面中明确可见的事实；不确定的信息不要补全\n"
-                f"2. 不要推断契约者的情绪、意图或工作进度，不要有\"被监控/被抓到\"的感觉\n"
-                f"3. 可以轻微吐槽画面里明确可见的东西，但先保证事实准确\n"
-                f"4. 不要提\"截图/屏幕/视觉模型/后台机制\"这些词，像朋友聊日常一样自然\n\n"
-                f"注意：无论是否发消息，都要用 set_proactive_timer 设下一次！"
-            )
-        else:
+    def _do_proactive_chat(self, prompt=None):
+        """执行链式主动对话（prompt 缺省时走通用主动触发的组装）"""
+        if prompt is None:
             prompt = self._build_proactive_prompt()
+        try:
+            self._drive.note_proactive_sent()  # 未回复情绪层次：主动过就要为"没被理"负责
+        except Exception:
+            pass
         sid = self._session_id
         self.chat_widget.set_current_session(sid)
         self.chat_widget.start_streaming(sid)
@@ -2030,6 +2180,7 @@ class MainWindow(QMainWindow):
         self._worker.moveToThread(self._worker_thread)
         self._worker_thread.started.connect(self._worker.run)
         self._worker.stream.connect(lambda c, s=sid: self._on_stream(s, c))
+        self._worker.tool_call.connect(lambda cn, name, st, content, s=sid: self._on_tool_call(s, cn, st))
         self._worker.finished.connect(lambda r, s=sid: self._on_response_finished(s, r))
         self._worker.error.connect(lambda e, s=sid: self._on_response_error(s, e))
         self._worker_thread.finished.connect(self._worker_thread.deleteLater)
@@ -2131,75 +2282,107 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
-    # ── 主动冲浪：定期挑兴趣标签去B站搜视频，推荐给契约者 ────────
+    # ── 内驱引擎：麦麦式自主行动（心跳 → 偷偷冲浪 → 存货/冒泡） ──
 
-    def _check_auto_surf(self):
-        """分钟级检查：距上次主动冲浪超过间隔 → 挑一批兴趣标签去冲浪。"""
+    def _on_inner_drive_tick(self):
+        """分钟级心跳：廉价规则闸门决定现在该不该开始一轮自主行动（无 LLM）。"""
         if not getattr(config, "SURF_AUTO_ENABLED", False):
             return
         try:
-            interval = float(getattr(config, "SURF_AUTO_INTERVAL_MIN", 180)) * 60
-            if time.time() - self._last_surf_ts < interval:
-                return
-            if self._surf_thread is not None and self._surf_thread.is_alive():
-                return
-            from brain import surf as _surf
-            batch = _surf.get_store().get_surf_batch(
-                max_tags=int(getattr(config, "SURF_TAGS_PER_ROUND", 4))
-            )
-            if not batch:
-                self._last_surf_ts = time.time()  # 没有可用标签也顺延，避免每分钟空转
-                return
-            self._last_surf_ts = time.time()
-            self._surf_thread = threading.Thread(
-                target=self._surf_worker, args=(batch,), daemon=True
-            )
-            self._surf_thread.start()
+            decision = self._drive.tick()
         except Exception:
-            pass
+            return
+        if decision.get("action") != "surf":
+            return
+        if self._drive_thread is not None and self._drive_thread.is_alive():
+            return
+        self._drive_thread = threading.Thread(
+            target=self._drive_surf_worker, daemon=True
+        )
+        self._drive_thread.start()
 
-    def _surf_worker(self, batch):
-        """遍历一批 (标签, 配额) 去B站搜索，聚合推荐消息。"""
-        message = ""
+    def _drive_surf_worker(self):
+        """工作线程：执行一轮自主冲浪（搜索/记录/入记忆），结果回主线程收尾。"""
+        print("[DRIVE] 六花开始偷偷冲浪…", flush=True)
+        payload = {"event": "surf_done", "result": {}}
         try:
-            from brain import surf as _surf
-            lines = []
-            for keyword, quota in batch:
-                videos = _surf.search_bilibili(keyword, limit=quota)
-                if not videos:
-                    continue
-                _surf.save_record("bilibili", keyword, f"B站: {keyword}",
-                                  videos[0]["url"], results=videos)
-                lines.append(f"🏷️ {keyword}：")
-                for v in videos[:quota]:
-                    author = v.get("author") or ""
-                    play = v.get("play") or ""
-                    meta = " · ".join(x for x in (author, play) if x)
-                    lines.append(f"  · {v.get('title', '')}" + (f"（{meta}）" if meta else ""))
-                    desc = (v.get("description") or "").strip()
-                    if desc:
-                        lines.append(f"    {desc[:60]}")
-                    lines.append(f"    {v['url']}")
-            if lines:
-                message = "🌊 我刚刚偷偷去B站冲浪啦～ 按你的兴趣挑了几条：\n" + "\n".join(lines)
-                message += "\n（去「冲浪记录」页点 👍/👎，我会记住你的口味～）"
+            payload["result"] = self._drive.run_surf_round()
+        except Exception as e:
+            payload["result"] = {"found": False, "count": 0, "lines": [], "error": str(e)}
+        finally:
+            result = payload.get("result") or {}
+            if result.get("found"):
+                print(f"[DRIVE] 冲浪归来：逛到 {result.get('count', 0)} 条新见闻（已入存货/记忆）", flush=True)
             else:
-                message = "🌊 我刚去B站冲浪了一圈，这次没找到新视频呢～"
-        except Exception:
-            message = ""
-        if message:
-            self._surf_result_signal.emit(message)
+                reason = result.get("error") or "这轮没有搜到新东西"
+                print(f"[DRIVE] 冲浪空手而归：{reason}", flush=True)
+            self._drive_event_signal.emit(json.dumps(payload, ensure_ascii=False))
 
-    def _on_surf_result(self, message):
-        self._surf_thread = None
-        if not message:
+    def _run_screen_sense(self):
+        """定期感知契约者的桌面状态（后台、不弹窗），供主动聊天做差异化关心。"""
+        if not getattr(config, "SCREEN_SENSE_ENABLED", True):
             return
         try:
-            self.chat_widget.add_message(message, is_user=False)
-            from brain import history as _hist
-            _hist.add_message(self._session_id, "assistant", message)
+            if config.in_dnd():
+                return  # 免打扰时段不窥屏
+            from brain import screen_sense as _ss
+            _ss.get_sense().capture_async()
         except Exception:
             pass
+
+    def _on_drive_command(self, cmd: str):
+        """仪表盘「内驱引擎运维」卡片按钮（surf_now/postpone/speak_now）。"""
+        try:
+            if cmd == "surf_now":
+                self._drive.force_surf_now()
+                if not (self._drive_thread and self._drive_thread.is_alive()):
+                    self._on_inner_drive_tick()  # 立刻触发一轮（不等下个心跳）
+            elif cmd == "postpone":
+                self._drive.postpone(60)  # 推迟一小时
+            elif cmd == "speak_now":
+                prompt = self._drive.force_speak_prompt()
+                if self._drive.is_busy():
+                    return
+                if prompt:
+                    self._do_proactive_chat(prompt)
+                else:
+                    self._do_proactive_chat()  # 没存货就普通主动聊一次
+        except Exception as e:
+            print(f"[DRIVE] 运维操作失败: {e}", flush=True)
+
+    def _on_drive_event(self, payload_json):
+        """主线程收尾：更新节奏状态；见闻新鲜且契约者安静时才概率冒泡。"""
+        self._drive_thread = None
+        try:
+            payload = json.loads(payload_json or "{}")
+        except Exception:
+            payload = {}
+        if payload.get("event") != "surf_done":
+            return
+        try:
+            prompt = self._drive.post_round(payload.get("result") or {})
+        except Exception:
+            prompt = None
+        if not prompt:
+            return
+        # 冒泡时也带上桌面状态（ta 在忙就提醒短一点，在摸鱼就放开聊）
+        try:
+            from brain import screen_sense as _ss
+            _state_block = _ss.get_sense().state_prompt()
+            if _state_block:
+                prompt += "\n\n" + _state_block
+        except Exception:
+            pass
+        # 冒泡是"主动找契约者"：需求记账（delivered 与否取决于 ta 回不回应，先记成功路径）
+        needs = getattr(self.agent, "_needs", None)
+        if needs is not None:
+            try:
+                needs.on_proactive(True)
+            except Exception:
+                pass
+        if self._drive.is_busy():
+            return  # 契约者恰好开口了：这次不冒，见闻留在存货里聊天时带出
+        self._do_proactive_chat(prompt)
 
     # ── Archivist 记忆档案员：每 2 分钟轻量层，闲置/碎片多时后台深度叙事归并 ──
 
@@ -2443,6 +2626,22 @@ class MainWindow(QMainWindow):
                 f"建议时机：{cue_action}；写作意图：{cue_msg or '自然地关心一下'}"
             )
 
+        # 桌面感知（LingChat 式窥屏）：不同状态不同关心策略，不合适就少说
+        try:
+            from brain import screen_sense as _ss
+            _state_block = _ss.get_sense().state_prompt()
+            if _state_block:
+                parts.append(_state_block)
+        except Exception:
+            pass
+        # 未回复情绪层次：连续主动没被理 → 语气递进，到上限转为撤
+        try:
+            _layer = self._drive.unanswered_prompt()
+            if _layer:
+                parts.append(_layer)
+        except Exception:
+            pass
+
         ctx = "\n".join(parts) if parts else "暂无"
 
         now = datetime.now()
@@ -2465,10 +2664,39 @@ class MainWindow(QMainWindow):
                     f"注意：这只是把消息同步给契约者，不影响你设置下一次 set_proactive_timer。"
                 )
 
+        # ── 🆕 Phase 3: 主动"脑子"——注入需求状态 + 主动意愿 + planner 建议 ──
+        needs_info = ""
+        try:
+            from brain import features as _feats
+            if _feats.is_enabled("emotion_needs_enabled"):
+                from brain.needs import NeedsState
+                if not hasattr(self.agent, "_needs") or self.agent._needs is None:
+                    self.agent._needs = NeedsState()
+                ns = self.agent._needs
+                drive = ns.initiative_drive()
+                wants = ("很想找" if drive >= 0.55 else ("可以找" if drive >= 0.4 else "不太想/想先歇着"))
+                needs_info = (
+                    f"\n【你的状态】社交{ns.social} 掌控{ns.mastery} 新奇{ns.novelty} "
+                    f"休息{ns.rest} ｜ 精力{ns.energy} 孤独{ns.loneliness}\n"
+                    f"主动意愿：{drive:.2f}（{wants}）。孤独/社交需求高就更想找契约者；精力低/想休息就忍住，别打扰。"
+                )
+                if _feats.is_enabled("decision_planner_enabled"):
+                    try:
+                        from brain.planner import decide_proactive
+                        dec = decide_proactive(ns, hour=hour, last_proactive_min=None)
+                        needs_info += (
+                            f"\n规划器参考：P(成功)={dec['p_success']:.2f}，"
+                            f"{'倾向主动' if dec['should'] else '倾向再等等'}（仅供参考，你仍按行为规范判断）"
+                        )
+                    except Exception:
+                        pass
+        except Exception:
+            needs_info = ""
+
         return (
             f"【系统通知 ✦ 链式主动关心触发】\n"
             f"当前时间：{now.strftime('%Y-%m-%d %H:%M')}（{period}，{hour}点）\n"
-            f"以下是你当前的上下文：\n{ctx}\n\n"
+            f"以下是你当前的上下文：\n{ctx}{needs_info}\n\n"
             f"请按你的行为规范判断：\n"
             f"1. 现在是否该主动找契约者？\n"
             f"2. 如果要发消息，直接回复即可\n"
@@ -2482,6 +2710,11 @@ class MainWindow(QMainWindow):
     def _reset_activity(self):
         """用户活动时调用——更新最后活动时间，清除防打扰"""
         self._last_activity = datetime.now()
+        # 契约者出现了：内驱引擎重置空手退避（见闻继续攒着，聊天时自然带出）
+        try:
+            self._drive.on_user_activity()
+        except Exception:
+            pass
 
     # ── 会话管理 ─────────────────────────────────────────────
 
@@ -2540,9 +2773,33 @@ class MainWindow(QMainWindow):
         self._refresh_chat_insights()
         self._reset_activity()
 
+    def _apply_emotion_edits(self, values: dict):
+        """情感面板「设置」：手动数值写回六花的情感状态机并立即刷新面板。"""
+        try:
+            self.agent.apply_emotion_values(values)
+        except Exception as e:
+            print(f"[EMOTION] 手动设置失败: {e}", flush=True)
+        self._refresh_chat_insights()
+
+    def _apply_emotion_locks(self, locked: set):
+        """情感面板「锁定」：被锁定的数值不再被日常互动自动更新。"""
+        try:
+            self.agent.set_emotion_locks(set(locked))
+        except Exception as e:
+            print(f"[EMOTION] 锁定失败: {e}", flush=True)
+        self._refresh_chat_insights()
+
     def _refresh_chat_insights(self):
-        if hasattr(self, "chat_insights"):
-            self.chat_insights.refresh_data()
+        if hasattr(self, "emotion_panel"):
+            try:
+                self.emotion_panel.refresh(self.agent.get_emotion_snapshot())
+            except Exception:
+                pass
+        if hasattr(self, "home_widget"):
+            try:
+                self.home_widget.refresh_recent()
+            except Exception:
+                pass
 
     def _load_session_messages(self, sid) -> bool:
         msgs = history.get_messages(sid)
@@ -2559,7 +2816,10 @@ class MainWindow(QMainWindow):
         self.chat_widget.new_session()
         # 界面仍展示完整历史（聊天窗口显示全部，上下文只取最近 N 轮）
         for m in msgs:
-            if m["role"] == "user":
+            if m["role"] == "system":
+                # 工具调用提示等系统气泡：左对齐系统样式恢复
+                self.chat_widget.add_system_bubble(m["content"])
+            elif m["role"] == "user":
                 if m["content"].startswith("[图片]"):
                     p = m["content"].replace("[图片]", "", 1).strip()
                     self.chat_widget.add_message(
@@ -2628,6 +2888,7 @@ class MainWindow(QMainWindow):
             (getattr(self, "_weekly_timer", None), "WEEKLY_AUTO_ENABLED"),
             (getattr(self, "_diary_summary_timer", None), "DIARY_AUTO_SUMMARY_ENABLED"),
             (getattr(self, "_surf_timer", None), "SURF_AUTO_ENABLED"),
+            (getattr(self, "_screen_sense_timer", None), "SCREEN_SENSE_ENABLED"),
         ):
             try:
                 if timer is None:

@@ -6,7 +6,7 @@ import re
 from collections import Counter
 from datetime import date, datetime, timedelta
 
-from PyQt5.QtCore import QRectF, QSize, Qt, pyqtSignal
+from PyQt5.QtCore import QRectF, QSize, Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QColor, QIcon, QKeySequence, QLinearGradient, QPainter, QPen, QPixmap
 from PyQt5.QtWidgets import (
     QCheckBox,
@@ -43,7 +43,12 @@ from gui.chat_top_bar import ChatTopBar
 from gui.settings_assets import (
     settings_asset_icon, settings_asset_pixmap, tinted_settings_asset_icon,
 )
-from gui.settings_widgets import PresetEditDialog, PresetItemWidget
+from gui.settings_widgets import (
+    ImageGenerationPresetEditDialog,
+    PresetEditDialog,
+    PresetItemWidget,
+    VisionPresetEditDialog,
+)
 from gui.surf_history_dialog import SurfTagRow, tag_row_size
 
 
@@ -53,6 +58,11 @@ STORAGE_REFERENCE_BYTES = 1024 ** 3
 
 def icon_path(name):
     return os.path.join(OUTLINE_DIR, f"{name}.svg")
+
+
+def _normalize_settings_search_text(value):
+    """Match settings search terms independently of spaces and separators."""
+    return "".join(character for character in str(value).casefold() if character.isalnum())
 
 
 def settings_preview_pixmap(kind):
@@ -100,22 +110,21 @@ def tinted_pixmap(source, color):
 
 
 class SettingsTopBar(ChatTopBar):
-    """Reference-style split search and window controls for settings."""
+    """Compact dashboard chrome matching the native chat top bar."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("SettingsTopBar")
         layout = self.layout()
-        layout.setContentsMargins(0, 0, 8, 0)
-        layout.setSpacing(3)
-        layout.insertStretch(1, 1)
-
+        layout.setContentsMargins(8, 4, 6, 4)
+        layout.setSpacing(4)
         self.search.setObjectName("SettingsSearch")
-        self.search.setFixedSize(528, 46)
+        self.search.setFixedWidth(self.SEARCH_WIDTH)
         self._shortcut_hint = QLabel("Ctrl + K", self.search)
         self._shortcut_hint.setObjectName("SettingsSearchShortcut")
         self._shortcut_hint.setAlignment(Qt.AlignCenter)
         self._shortcut_hint.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self._shortcut_hint.hide()
         self.search.textChanged.connect(self._update_shortcut_hint)
         self._search_shortcut = QShortcut(QKeySequence("Ctrl+K"), self)
         self._search_shortcut.activated.connect(self.search.setFocus)
@@ -125,43 +134,25 @@ class SettingsTopBar(ChatTopBar):
             if button.objectName() == "ChatTopAction"
         ]
         for button in action_buttons:
-            button.setFixedSize(48, 40)
-        if action_buttons:
-            action_buttons[-1].setProperty("active", True)
-
+            button.setFixedSize(32, 32)
         for button in self.findChildren(QPushButton):
             if button.objectName() == "ChatWindowButton":
-                button.setFixedSize(34, 40)
+                button.setFixedSize(26, 30)
         avatar = self.findChild(QLabel, "ChatTopAvatar")
         if avatar is not None:
-            avatar.setFixedSize(30, 30)
-        self.status.setFixedWidth(36)
-        self.status.setAlignment(Qt.AlignCenter)
+            avatar.setFixedSize(28, 28)
 
     def _update_shortcut_hint(self, text):
-        self._shortcut_hint.setVisible(not bool(text))
+        # Compact search matches ChatTopBar; keep the shortcut out of the field.
+        self._shortcut_hint.hide()
 
     def resizeEvent(self, event):
         self._shortcut_hint.setGeometry(self.search.width() - 76, 0, 66, self.search.height())
         super().resizeEvent(event)
 
     def paintEvent(self, event):
+        # The shared QSS supplies the same compact surface as ChatTopBar.
         super().paintEvent(event)
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        painter.setPen(QPen(QColor(129, 88, 198, 42), 1))
-        painter.setBrush(QColor(255, 255, 255, 218))
-        painter.drawRoundedRect(QRectF(self.search.geometry()), 15, 15)
-
-        actions = [
-            button for button in self.findChildren(QPushButton)
-            if button.objectName() == "ChatTopAction"
-        ]
-        if actions:
-            left = max(0, actions[0].geometry().left() - 8)
-            controls = QRectF(left, 0, self.width() - left, self.height())
-            painter.drawRoundedRect(controls, 13, 13)
-        painter.end()
 
 
 class SettingsToggle(QPushButton):
@@ -216,25 +207,40 @@ class SettingsNavItem(QWidget):
         subtitle.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         copy.addWidget(subtitle)
         layout.addLayout(copy, 1)
+        self._title = title
+        self._subtitle = subtitle
         self.set_active(False)
 
     def set_active(self, active):
-        self.setProperty("active", bool(active))
+        # active 属性直接挂在被样式化的控件自己身上（而非父控件的 descendant
+        # 选择器）——"父属性→子控件"的写法在属性切换后子控件样式可能不重算，
+        # 导致导航第一项字色与其他项不一致且换主题也不恢复。
+        active = bool(active)
+        self.setProperty("active", active)
+        for w in (self._title, self._subtitle, self._icon):
+            w.setProperty("active", active)
+            style = w.style()
+            style.unpolish(w)
+            style.polish(w)
         pixmap = settings_asset_pixmap(f"nav.{self._icon_name}", QSize(20, 20))
         if active and not pixmap.isNull():
             pixmap = tinted_pixmap(pixmap, "#ffffff")
         elif not pixmap.isNull():
             pixmap = tinted_pixmap(pixmap, theme_manager.current_accent())
         self._icon.setPixmap(pixmap)
-        self.style().unpolish(self)
-        self.style().polish(self)
+        style = self.style()
+        style.unpolish(self)
+        style.polish(self)
         self.update()
 
 
-def directory_size(path):
+def directory_size(path, exclude_dirs=None):
     total = 0
+    exclude = set(exclude_dirs or ())
     if os.path.isdir(path):
-        for root, _, filenames in os.walk(path):
+        for root, dirs, filenames in os.walk(path):
+            # 跳过备份目录（记忆存储只统计真实数据，不含自动备份）
+            dirs[:] = [d for d in dirs if d not in exclude]
             for filename in filenames:
                 try:
                     total += os.path.getsize(os.path.join(root, filename))
@@ -324,7 +330,7 @@ class DashboardPage(QFrame):
         self.root.addLayout(self._build_heading(title, subtitle, icon_name))
 
         self.top_bar = top_bar_cls()
-        self.top_bar.search.setFixedWidth(350)
+        self.top_bar.search.setFixedWidth(ChatTopBar.SEARCH_WIDTH)
         self.top_bar.history_requested.connect(self.history_requested.emit)
         self.top_bar.memo_requested.connect(self.memo_requested.emit)
         self.top_bar.tools_requested.connect(self.tools_requested.emit)
@@ -332,7 +338,10 @@ class DashboardPage(QFrame):
         self.top_bar.window_action.connect(self.window_action.emit)
         self.top_bar.window_drag.connect(self.window_drag.emit)
         self._overlay.addWidget(self.content, 0, 0)
-        self._overlay.addWidget(self.top_bar, 0, 0, Qt.AlignTop | Qt.AlignRight)
+        # 顶栏作为页面的独立子控件，由 resizeEvent 统一 setGeometry 定位到右上角，
+        # 保证所有仪表盘页任务栏位置一致（不再依赖 grid 对齐导致漂移）。
+        self.top_bar.setParent(self)
+        self.top_bar.raise_()
 
     def _build_heading(self, title, subtitle, icon_name):
         row = QHBoxLayout()
@@ -385,6 +394,23 @@ class DashboardPage(QFrame):
     def set_appearance_background(self, pixmap, wash):
         self._background = QPixmap(pixmap)
         self._background_wash = QColor(wash)
+
+    def resizeEvent(self, event):
+        """所有仪表盘页统一：顶栏固定在右上角同一位置（不再随页面内容漂移）。"""
+        super().resizeEvent(event)
+        try:
+            if self.top_bar is not None:
+                # Match chat chrome: compact width, 8px top/right inset.
+                available = max(0, self.width() - 2 * ChatTopBar.RIGHT_MARGIN)
+                w = min(self.top_bar.sizeHint().width(), available)
+                self.top_bar.setGeometry(
+                    max(ChatTopBar.RIGHT_MARGIN, self.width() - w - ChatTopBar.RIGHT_MARGIN),
+                    ChatTopBar.TOP_MARGIN,
+                    w,
+                    ChatTopBar.BAR_HEIGHT,
+                )
+        except Exception:
+            pass
         self._background_wash.setAlpha(min(72, self._background_wash.alpha()))
         self.update()
 
@@ -591,6 +617,28 @@ class HistoryRow(QWidget):
         delete.setIcon(QIcon(icon_path("delete")))
         delete.setToolTip("删除记录")
         delete.clicked.connect(lambda: self.delete_requested.emit(self.session_id))
+        layout.addWidget(delete)
+
+
+class QQWhitelistRow(QWidget):
+    delete_requested = pyqtSignal(int)
+
+    def __init__(self, user_id, parent=None):
+        super().__init__(parent)
+        self.user_id = int(user_id)
+        self.setObjectName("QQWhitelistRow")
+        self.setFixedHeight(38)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(11, 3, 5, 3)
+        layout.setSpacing(8)
+        number = QLabel(f"QQ  {self.user_id}")
+        number.setObjectName("QQWhitelistNumber")
+        layout.addWidget(number, 1)
+        delete = QPushButton()
+        delete.setObjectName("QQWhitelistDeleteButton")
+        delete.setIcon(QIcon(icon_path("delete")))
+        delete.setToolTip(f"删除 QQ {self.user_id}")
+        delete.clicked.connect(lambda: self.delete_requested.emit(self.user_id))
         layout.addWidget(delete)
 
 
@@ -873,7 +921,7 @@ class MemoryPage(DashboardPage):
             parent, top_bar_cls=SettingsTopBar,
         )
         self.top_bar.search.setPlaceholderText("搜索记忆内容、关键词或标签...")
-        self.top_bar.search.setFixedWidth(500)
+        self.top_bar.search.setFixedWidth(ChatTopBar.SEARCH_WIDTH)
         self.top_bar.search_changed.connect(self._on_search_changed)
         self._active_filter="全部"
         self._visible_limit=60
@@ -1033,7 +1081,7 @@ class MemoryPage(DashboardPage):
         else:
             self.strength.set_value(0,"","暂无"); self.strength_label.setText("暂无记忆")
         daily=Counter(str(f.get("created_at",""))[:10] for f in all_fragments); days=[date.today()-timedelta(days=i) for i in range(6,-1,-1)]; self.trend.set_data([f"{d.month}/{d.day}" for d in days],[daily[d.isoformat()] for d in days])
-        used=directory_size(config.MEMORY_DIR); size_text=format_file_size(used)
+        used=directory_size(config.MEMORY_DIR, exclude_dirs=("backups",)); size_text=format_file_size(used)
         buckets=self._category_storage_bytes(all_fragments)
         seg_colors=(("#8150df","重要的事"),("#ef7bb4","喜好"),("#f4a747","日常"),("#6a7fe0","系统"),("#b49ae8","其他"))
         segments=[(label,bytes_,QColor(color)) for color,label in seg_colors if (bytes_:=buckets[label])>0]
@@ -1211,6 +1259,7 @@ class SettingsChoiceCard(QFrame):
 
 class SettingsPage(DashboardPage):
     config_changed=pyqtSignal()
+    drive_command=pyqtSignal(str)  # 内驱引擎运维按钮：surf_now/postpone/speak_now
 
     def __init__(self,parent=None):
         super().__init__(
@@ -1228,11 +1277,10 @@ class SettingsPage(DashboardPage):
         self.top_bar.setParent(self)
         self.top_bar.raise_()
         self.top_bar.setMinimumWidth(0)
-        self.top_bar.setMaximumWidth(1115)
-        self.top_bar.search.setMinimumWidth(220)
-        self.top_bar.search.setMaximumWidth(528)
-        self.top_bar.search.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.top_bar.search.setFixedHeight(46)
+        self.top_bar.setMaximumWidth(self.top_bar.sizeHint().width())
+        self.top_bar.search.setFixedWidth(ChatTopBar.SEARCH_WIDTH)
+        self.top_bar.search.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.top_bar.search.setFixedHeight(32)
         self.root.setContentsMargins(278, 78, 18, 18)
         self.root.setSpacing(24)
         self._loading_appearance = False
@@ -1266,7 +1314,7 @@ class SettingsPage(DashboardPage):
     def _build_ui(self):
         body=QHBoxLayout(); body.setSpacing(0); body.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         nav=self.card(255); nav.setObjectName("SettingsNavPanel"); nav.setFixedHeight(737); self._settings_nav_panel = nav; nl=QVBoxLayout(nav); nl.setContentsMargins(10,11,10,10); nl.setSpacing(6)
-        categories=(("外观设置","主题模式与视觉效果","theme"),("对话与回复","回复风格、模型参数、对话记忆","chat"),("方案设置","模型预设方案配置","ai"),("智能搜图","搜索参数与视觉分析配置","drawing"),("冲浪设置","六花主动上网冲浪与兴趣标签参数","web"),("记忆与隐私","记忆管理、行为规则、数据导入导出","privacy"),("主动聊天","主动关心、摸鱼彩蛋、开机自启","proactive"),("语音设置","TTS 引擎与变声参数","voice"),("GPT-SoVITS","六花音色合成引擎的推理参数与服务","gptsovits"),("Sleep-time Compute","深度记忆整合与后台反思","time"))
+        categories=(("外观设置","主题模式与视觉效果","theme"),("对话与回复","回复风格、模型参数、对话记忆","chat"),("方案设置","模型预设方案配置","ai"),("智能搜图","搜索参数与视觉分析配置","drawing"),("冲浪设置","六花主动上网冲浪与兴趣标签参数","web"),("记忆与隐私","记忆管理、行为规则、数据导入导出","privacy"),("主动聊天","主动关心、摸鱼彩蛋、开机自启","proactive"),("Sleep-time Compute","深度记忆整合与后台反思","time"))
         self.nav=QListWidget(); self.nav.setObjectName("SettingsNavList")
         self.nav.setIconSize(QSize(20,20))
         self._settings_categories = categories
@@ -1277,9 +1325,7 @@ class SettingsPage(DashboardPage):
             "智能搜图 图片 搜索 候选 视觉 分析 上限 返回",
             "冲浪 上网 B站 视频 推荐 兴趣 标签 冷却 衰减 反馈 间隔 自动",
             "记忆 隐私 数据 权限 人设 行为规则 导入 导出 记录",
-            "主动 聊天 关心 摸鱼 彩蛋 开机自启 轮换",
-            "语音 TTS 引擎 变声 模型 推理 参数 音色",
-            "GPT-SoVITS 六花 合成 引擎 推理 采样 步数 温度 top_k top_p 重复 惩罚 语速 切分 参考 音频 文字 服务 地址 超时",
+            "主动 聊天 关心 摸鱼 彩蛋 开机自启 轮换 QQ 白名单 权限",
             "Sleep-time Compute 深度 记忆 整合 后台 反思 凌晨 回溯 天数 模型 DeepSeek 去重 合并 模式 叙事 定时 执行",
         )
         for name, detail, icon in categories:
@@ -1305,7 +1351,7 @@ class SettingsPage(DashboardPage):
         body.addSpacing(17)
         self.pages=QStackedWidget(); self.pages.setObjectName("SettingsPages")
         self.pages.setFixedSize(731, 737)
-        self.pages.addWidget(self._appearance_page()); self.pages.addWidget(self._chat_page()); self.pages.addWidget(self._ai_page()); self.pages.addWidget(self._search_page()); self.pages.addWidget(self._surf_page()); self.pages.addWidget(self._privacy_page()); self.pages.addWidget(self._proactive_page()); self.pages.addWidget(self._voice_page()); self.pages.addWidget(self._gptsovits_page()); self.pages.addWidget(self._sleep_compute_page()); body.addWidget(self.pages)
+        self.pages.addWidget(self._appearance_page()); self.pages.addWidget(self._chat_page()); self.pages.addWidget(self._ai_page()); self.pages.addWidget(self._search_page()); self.pages.addWidget(self._surf_page()); self.pages.addWidget(self._privacy_page()); self.pages.addWidget(self._proactive_page()); self.pages.addWidget(self._sleep_compute_page()); body.addWidget(self.pages)
         self._pages_scroll = QScrollArea()
         self._pages_scroll.setObjectName("SettingsPagesScroll")
         self._pages_scroll.setWidgetResizable(False)
@@ -1476,18 +1522,30 @@ class SettingsPage(DashboardPage):
         return page
 
     def _ai_page(self):
-        page,layout=self._page_shell("方案设置","管理模型预设方案")
+        page,layout=self._page_shell("方案设置","分别管理对话与识图模型方案")
         scroll=QScrollArea(); scroll.setObjectName("SettingsScrollArea"); scroll.setWidgetResizable(True); scroll.setFrameShape(QFrame.NoFrame)
         inner=QWidget(); il=QVBoxLayout(inner); il.setContentsMargins(0,6,6,6); il.setSpacing(12)
         preset=QFrame(); preset.setObjectName("SettingsOptionCard"); pl=QVBoxLayout(preset); pl.setContentsMargins(16,14,16,14); pl.setSpacing(8)
         header=QHBoxLayout(); header.setContentsMargins(0,0,0,0); header.setSpacing(14)
         header_copy=QVBoxLayout(); header_copy.setContentsMargins(0,0,0,0); header_copy.setSpacing(3)
-        preset_title=QLabel("模型预设方案"); preset_title.setObjectName("SettingsFieldLabel"); header_copy.addWidget(preset_title)
+        preset_title=QLabel("对话模型方案"); preset_title.setObjectName("SettingsFieldLabel"); header_copy.addWidget(preset_title)
         preset_hint=QLabel("在这里添加多组 API 方案，点击「使用」即可一键切换当前对话模型。"); preset_hint.setObjectName("DashboardMuted"); preset_hint.setWordWrap(True); header_copy.addWidget(preset_hint)
         header.addLayout(header_copy,1)
         top_row=QHBoxLayout(); top_row.setContentsMargins(0,0,0,0); top_row.setSpacing(8); add_btn=QPushButton("+ 添加方案"); add_btn.setObjectName("DashboardSecondaryButton"); add_btn.setFixedSize(104,36); add_btn.clicked.connect(self._on_add_preset); top_row.addWidget(add_btn); self._delete_preset_btn=QPushButton("删除"); self._delete_preset_btn.setObjectName("DashboardSecondaryButton"); self._delete_preset_btn.setFixedSize(80,36); self._delete_preset_btn.setEnabled(False); self._delete_preset_btn.clicked.connect(self._on_del_preset); top_row.addWidget(self._delete_preset_btn); header.addLayout(top_row)
         pl.addLayout(header)
-        self._pl=QListWidget(); self._pl.setObjectName("SettingsPresetList"); self._pl.setMinimumHeight(240); self._pl.setSpacing(6); self._pl.setUniformItemSizes(True); self._pl.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff); self._pl.currentItemChanged.connect(self._on_preset_selection_changed); pl.addWidget(self._pl,1); il.addWidget(preset,1)
+        self._pl=QListWidget(); self._pl.setObjectName("SettingsPresetList"); self._pl.setMinimumHeight(220); self._pl.setSpacing(6); self._pl.setUniformItemSizes(True); self._pl.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff); self._pl.currentItemChanged.connect(self._on_preset_selection_changed); pl.addWidget(self._pl,1); il.addWidget(preset)
+
+        vision=QFrame(); vision.setObjectName("SettingsOptionCard"); vl=QVBoxLayout(vision); vl.setContentsMargins(16,14,16,14); vl.setSpacing(8)
+        vision_header=QHBoxLayout(); vision_header.setContentsMargins(0,0,0,0); vision_header.setSpacing(14)
+        vision_copy=QVBoxLayout(); vision_copy.setContentsMargins(0,0,0,0); vision_copy.setSpacing(3)
+        vision_title=QLabel("识图模型方案"); vision_title.setObjectName("SettingsFieldLabel"); vision_copy.addWidget(vision_title)
+        vision_hint=QLabel("图片描述、OCR 与智能搜图会使用这里启用的视觉模型；API Key 会加密保存在本机凭据库中。"); vision_hint.setObjectName("DashboardMuted"); vision_hint.setWordWrap(True); vision_copy.addWidget(vision_hint)
+        vision_header.addLayout(vision_copy,1)
+        vision_actions=QHBoxLayout(); vision_actions.setContentsMargins(0,0,0,0); vision_actions.setSpacing(8)
+        add_vision_btn=QPushButton("+ 添加方案"); add_vision_btn.setObjectName("DashboardSecondaryButton"); add_vision_btn.setFixedSize(104,36); add_vision_btn.clicked.connect(self._on_add_vision_preset); vision_actions.addWidget(add_vision_btn)
+        self._delete_vision_preset_btn=QPushButton("删除"); self._delete_vision_preset_btn.setObjectName("DashboardSecondaryButton"); self._delete_vision_preset_btn.setFixedSize(80,36); self._delete_vision_preset_btn.setEnabled(False); self._delete_vision_preset_btn.clicked.connect(self._on_delete_vision_preset); vision_actions.addWidget(self._delete_vision_preset_btn)
+        vision_header.addLayout(vision_actions); vl.addLayout(vision_header)
+        self._vision_preset_list=QListWidget(); self._vision_preset_list.setObjectName("SettingsPresetList"); self._vision_preset_list.setMinimumHeight(220); self._vision_preset_list.setSpacing(6); self._vision_preset_list.setUniformItemSizes(True); self._vision_preset_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff); self._vision_preset_list.currentItemChanged.connect(self._on_vision_preset_selection_changed); vl.addWidget(self._vision_preset_list,1); il.addWidget(vision)
         scroll.setWidget(inner); layout.addWidget(scroll,1); return page
 
     def _search_page(self):
@@ -1502,22 +1560,46 @@ class SettingsPage(DashboardPage):
         self._sma=self._make_settings_spinbox(3,30," 张"); sl.addLayout(self._settings_field("视觉分析上限",self._sma))
         note=QLabel("提示：需要本地运行 SearXNG 实例（默认 http://localhost:8080）。"); note.setObjectName("DashboardMuted"); note.setWordWrap(True); sl.addWidget(note)
         il.addWidget(search)
+
+        generation=QFrame(); generation.setObjectName("SettingsOptionCard"); gl=QVBoxLayout(generation); gl.setContentsMargins(16,14,16,14); gl.setSpacing(8)
+        header=QHBoxLayout(); header.setContentsMargins(0,0,0,0); header.setSpacing(12)
+        header_copy=QVBoxLayout(); header_copy.setContentsMargins(0,0,0,0); header_copy.setSpacing(3)
+        generation_title=QLabel("生图模型方案"); generation_title.setObjectName("SettingsFieldLabel"); header_copy.addWidget(generation_title)
+        generation_hint=QLabel("生图服务与对话模型分开保存。点击「使用」启用方案，API Key 会加密保存在本机凭据库中。"); generation_hint.setObjectName("DashboardMuted"); generation_hint.setWordWrap(True); header_copy.addWidget(generation_hint)
+        header.addLayout(header_copy,1)
+        buttons=QHBoxLayout(); buttons.setContentsMargins(0,0,0,0); buttons.setSpacing(8)
+        add_image_preset=QPushButton("+ 添加方案"); add_image_preset.setObjectName("DashboardSecondaryButton"); add_image_preset.setFixedSize(104,36); add_image_preset.clicked.connect(self._on_add_image_generation_preset); buttons.addWidget(add_image_preset)
+        self._delete_image_generation_preset_btn=QPushButton("删除"); self._delete_image_generation_preset_btn.setObjectName("DashboardSecondaryButton"); self._delete_image_generation_preset_btn.setFixedSize(80,36); self._delete_image_generation_preset_btn.setEnabled(False); self._delete_image_generation_preset_btn.clicked.connect(self._on_delete_image_generation_preset); buttons.addWidget(self._delete_image_generation_preset_btn)
+        header.addLayout(buttons); gl.addLayout(header)
+        self._image_generation_preset_list=QListWidget(); self._image_generation_preset_list.setObjectName("SettingsPresetList"); self._image_generation_preset_list.setMinimumHeight(176); self._image_generation_preset_list.setSpacing(6); self._image_generation_preset_list.setUniformItemSizes(True); self._image_generation_preset_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff); self._image_generation_preset_list.currentItemChanged.connect(self._on_image_generation_preset_selection_changed); gl.addWidget(self._image_generation_preset_list)
+        il.addWidget(generation)
         actions=QHBoxLayout(); actions.addStretch(); save=QPushButton("保存设置"); save.setObjectName("DashboardPrimaryButton"); save.clicked.connect(self._save_smart_search); actions.addWidget(save); il.addLayout(actions); il.addStretch()
         scroll.setWidget(inner); layout.addWidget(scroll,1); return page
 
     def _surf_page(self):
-        page,layout=self._page_shell("冲浪设置","让六花定期主动去B站冲浪、按兴趣挑视频推荐给你")
+        page,layout=self._page_shell("冲浪设置","六花会自己找时间偷偷去B站冲浪：见闻攒进记忆，聊天时自然提起；你安静一阵后她也可能主动来分享。")
         scroll=QScrollArea(); scroll.setObjectName("SettingsScrollArea"); scroll.setWidgetResizable(True); scroll.setFrameShape(QFrame.NoFrame)
         inner=QWidget(); il=QVBoxLayout(inner); il.setContentsMargins(0,6,6,6); il.setSpacing(10)
         # 主动冲浪节奏
         rhythm=QFrame(); rhythm.setObjectName("SettingsOptionCard"); rl=QVBoxLayout(rhythm); rl.setContentsMargins(14,12,14,12); rl.setSpacing(8)
         rhythm_title=QLabel("主动冲浪"); rhythm_title.setObjectName("SettingsFieldLabel"); rl.addWidget(rhythm_title)
-        rhythm_hint=QLabel("开启后，六花每隔一段时间会偷偷去B站逛一圈，挑最感兴趣的话题找视频，然后以消息形式推荐给你。"); rhythm_hint.setObjectName("DashboardMuted"); rhythm_hint.setWordWrap(True); rl.addWidget(rhythm_hint)
+        rhythm_hint=QLabel("开启后，六花每隔一段随机的时间会自己去B站逛一圈（正在和你聊天也不会打扰）：逛到的视频会记进她的记忆，聊天时像碰巧想起一样带出；你安静一阵子后，她也可能兴冲冲地主动来安利。还没设置兴趣标签时，她会逛B站当前热门。"); rhythm_hint.setObjectName("DashboardMuted"); rhythm_hint.setWordWrap(True); rl.addWidget(rhythm_hint)
         self._surf_enabled=SettingsToggle(); rl.addLayout(self._settings_field("启用主动冲浪",self._surf_enabled))
-        self._surf_interval=self._make_settings_spinbox(1,1440," 分钟"); rl.addLayout(self._settings_field_hint("冲浪间隔",self._surf_interval,"每隔多久去冲浪一次。调小=更频繁地主动推荐（想测试就调 1 分钟），调大=更安静。默认 180 分钟（3小时）。"))
+        self._surf_interval=self._make_settings_spinbox(1,1440," 分钟"); rl.addLayout(self._settings_field_hint("冲浪间隔",self._surf_interval,"每隔多久去冲浪一次（实际带随机抖动，不会像闹钟一样整点触发）。调小=逛得更勤，调大=更安静。默认 180 分钟（3小时）。"))
         self._surf_tags_round=self._make_settings_spinbox(1,10," 个"); rl.addLayout(self._settings_field_hint("每次挑标签数",self._surf_tags_round,"每次冲浪随机挑几个兴趣标签去搜。挑得越多，一次推荐越丰富。默认 4 个。"))
         self._surf_limit=self._make_settings_spinbox(1,10," 条"); rl.addLayout(self._settings_field_hint("单标签最多条数",self._surf_limit,"每个标签最多推荐几条。星级高的标签会优先拿满配额（3★以上 2 条、其余 1 条）。默认 2 条。"))
         il.addWidget(rhythm)
+        # 内驱引擎运维：倒计时可视化 + 立即触发/取消（对标 proactive_chat WebUI 的运维能力）
+        ops=QFrame(); ops.setObjectName("SettingsOptionCard"); ol=QVBoxLayout(ops); ol.setContentsMargins(14,12,14,12); ol.setSpacing(8)
+        ops_title=QLabel("内驱引擎运维"); ops_title.setObjectName("SettingsFieldLabel"); ol.addWidget(ops_title)
+        self._ops_status=QLabel("读取中…"); self._ops_status.setObjectName("DashboardMuted"); self._ops_status.setWordWrap(True); ol.addWidget(self._ops_status)
+        ops_btns=QHBoxLayout(); ops_btns.setSpacing(8)
+        for text,cmd in (("立即冲浪","surf_now"),("立即冒泡","speak_now"),("推迟一小时","postpone")):
+            btn=QPushButton(text); btn.setObjectName("DashboardSecondaryButton"); btn.clicked.connect(lambda _checked=False,c=cmd: self.drive_command.emit(c)); ops_btns.addWidget(btn)
+        ops_btns.addStretch(); ol.addLayout(ops_btns)
+        il.addWidget(ops)
+        self._ops_timer=QTimer(self); self._ops_timer.setInterval(20*1000); self._ops_timer.timeout.connect(self._refresh_drive_ops); self._ops_timer.start()
+        self._refresh_drive_ops()
         # 兴趣标签参数
         tag=QFrame(); tag.setObjectName("SettingsOptionCard"); tl=QVBoxLayout(tag); tl.setContentsMargins(14,12,14,12); tl.setSpacing(8)
         tag_title=QLabel("兴趣标签参数"); tag_title.setObjectName("SettingsFieldLabel"); tl.addWidget(tag_title)
@@ -1562,6 +1644,25 @@ class SettingsPage(DashboardPage):
         surf_mod.get_store().remove_tag(keyword)
         self._refresh_surf_tags()
 
+    def _refresh_drive_ops(self):
+        """刷新「内驱引擎运维」卡片：倒计时/冷却/未回应/存货一屏可见。"""
+        try:
+            from brain.inner_drive import get_engine
+            s = get_engine().snapshot()
+
+            def _mm(sec):
+                m = int(sec // 60)
+                return f"{m // 60}小时{m % 60}分" if m >= 60 else f"{m}分钟"
+            rows = [
+                f"下次冲浪：{'正在逛…' if s.get('round_running') else _mm(s.get('surf_in_sec', 0))}后"
+                + ("（退避中）" if s.get("backoff") else ""),
+                f"冒泡冷却：{_mm(s.get('speak_cooldown_sec', 0))}后可用",
+                f"连续未回应：{s.get('unanswered', 0)} 次　｜　待聊存货：{s.get('stash_count', 0)} 条",
+            ]
+            self._ops_status.setText("\n".join(rows))
+        except Exception as e:
+            self._ops_status.setText(f"引擎状态不可用：{e}")
+
     def _refresh_surf_tags(self):
         from brain import surf as surf_mod
         self._surf_tag_list.clear()
@@ -1587,58 +1688,55 @@ class SettingsPage(DashboardPage):
         }); self.config_changed.emit(); QMessageBox.information(self,"已保存","冲浪设置已更新（下一次冲浪生效）")
 
     def _proactive_page(self):
-        page,layout=self._page_shell("主动聊天","让六花在恰当的时候回来找你，也能决定是否开启摸鱼彩蛋")
+        page,outer_layout=self._page_shell("主动聊天","让六花在恰当的时候回来找你：免打扰时段、桌面感知与链式主动都在这里调")
+        scroll=QScrollArea(); scroll.setObjectName("SettingsScrollArea"); scroll.setWidgetResizable(True); scroll.setFrameShape(QFrame.NoFrame)
+        inner=QWidget(); layout=QVBoxLayout(inner); layout.setContentsMargins(0,6,6,6); layout.setSpacing(10)
         basic=QFrame(); basic.setObjectName("SettingsOptionCard"); bl=QVBoxLayout(basic); bl.setContentsMargins(14,12,14,12); bl.setSpacing(8)
         self._pcb=QCheckBox("开启链式主动关心"); bl.addWidget(self._pcb)
         self._qqcb=QCheckBox("主动消息同步发QQ"); bl.addWidget(self._qqcb)
         self._ascb=QCheckBox("开机自启"); bl.addWidget(self._ascb)
         self._rt=self._make_settings_spinbox(5,100," 轮后新会话"); bl.addLayout(self._settings_field("自动轮换",self._rt)); layout.addWidget(basic)
         slack=QFrame(); slack.setObjectName("SettingsOptionCard"); sl2=QVBoxLayout(slack); sl2.setContentsMargins(14,12,14,12); sl2.setSpacing(8)
-        slack_title=QLabel("摸鱼彩蛋"); slack_title.setObjectName("SettingsFieldLabel"); sl2.addWidget(slack_title)
-        hint=QLabel("允许六花偶尔偷看屏幕，做更有趣的主动搭话。"); hint.setObjectName("DashboardMuted"); sl2.addWidget(hint)
-        self._slack_cb=QCheckBox("启用摸鱼彩蛋"); sl2.addWidget(self._slack_cb)
-        self._sp=self._make_settings_spinbox(5,100," %"); sl2.addLayout(self._settings_field("触发概率",self._sp))
-        self._sc=self._make_settings_spinbox(5,300," 分钟"); sl2.addLayout(self._settings_field("观察冷却",self._sc)); layout.addWidget(slack)
-        actions=QHBoxLayout(); actions.addStretch(); save=QPushButton("保存设置"); save.setObjectName("DashboardPrimaryButton"); save.clicked.connect(self._save_proactive); actions.addWidget(save); layout.addLayout(actions); layout.addStretch(); return page
+        slack_title=QLabel("主动窥屏（桌面感知）"); slack_title.setObjectName("SettingsFieldLabel"); sl2.addWidget(slack_title)
+        hint=QLabel("六花定期看一眼桌面状态（工作/学习/游戏/摸鱼/挂机），主动聊天时贴心调整：忙时轻轻陪、摸鱼时来聊、挂机不打扰。只看画面事实，不猜心情。"); hint.setObjectName("DashboardMuted"); hint.setWordWrap(True); sl2.addWidget(hint)
+        self._slack_cb=QCheckBox("启用桌面感知"); sl2.addWidget(self._slack_cb)
+        self._si=self._make_settings_spinbox(5,120," 分钟"); sl2.addLayout(self._settings_field_hint("感知间隔",self._si,"每隔多久看一眼桌面。调小感知更及时但更费视觉模型调用。默认 12 分钟。")); layout.addWidget(slack)
+        dnd=QFrame(); dnd.setObjectName("SettingsOptionCard"); dl=QVBoxLayout(dnd); dl.setContentsMargins(14,12,14,12); dl.setSpacing(8)
+        dnd_title=QLabel("免打扰时段"); dnd_title.setObjectName("SettingsFieldLabel"); dl.addWidget(dnd_title)
+        dnd_hint=QLabel("此时段内六花不冲浪、不主动冒泡、不窥屏（临时回访不受影响）。支持跨午夜，比如 23 → 8。"); dnd_hint.setObjectName("DashboardMuted"); dnd_hint.setWordWrap(True); dl.addWidget(dnd_hint)
+        dnd_row=QHBoxLayout(); dnd_row.setSpacing(10)
+        self._dnd_start=self._make_settings_spinbox(0,23," 点"); dnd_row.addWidget(QLabel("从")); dnd_row.addWidget(self._dnd_start); dnd_row.addStretch()
+        self._dnd_end=self._make_settings_spinbox(0,23," 点"); dnd_row.addWidget(QLabel("到")); dnd_row.addWidget(self._dnd_end); dnd_row.addStretch()
+        dl.addLayout(dnd_row); layout.addWidget(dnd)
+        gchat=QFrame(); gchat.setObjectName("SettingsOptionCard"); gl2=QVBoxLayout(gchat); gl2.setContentsMargins(14,12,14,12); gl2.setSpacing(8)
+        gchat_title=QLabel("群聊行为"); gchat_title.setObjectName("SettingsFieldLabel"); gl2.addWidget(gchat_title)
+        gchat_hint=QLabel("六花在 QQ 群里不再是每条必回：被 @ 或点名必回；智能插话模式会按话题价值自己决定接不接话（提问/请求加分，\"哈哈\"\"6\"这类短反应减分，刚说过话会自动收着点）。共享整个群的上下文，记得群里每个人说过什么。"); gchat_hint.setObjectName("DashboardMuted"); gchat_hint.setWordWrap(True); gl2.addWidget(gchat_hint)
+        self._gmode=QComboBox(); self._gmode.addItem("智能插话（推荐）","smart"); self._gmode.addItem("仅 @我和点名才回","at_only"); gl2.addLayout(self._settings_field("群聊模式",self._gmode))
+        self._gscore=self._make_settings_spinbox(30,95," 分"); gl2.addLayout(self._settings_field_hint("插话阈值",self._gscore,"智能插话模式下，一条消息要达到这个分她才接话。调高=更沉默，调低=更爱说话。默认 60。"))
+        layout.addWidget(gchat)
+        qq_permissions=QFrame(); qq_permissions.setObjectName("SettingsOptionCard"); qpl=QVBoxLayout(qq_permissions); qpl.setContentsMargins(14,12,14,12); qpl.setSpacing(7)
+        qq_permissions_title=QLabel("QQ 权限白名单"); qq_permissions_title.setObjectName("SettingsFieldLabel"); qpl.addWidget(qq_permissions_title)
+        qq_permissions_hint=QLabel("只有白名单中的 QQ 用户可使用电脑操作等受限能力。留空表示 QQ 端无人拥有此权限。"); qq_permissions_hint.setObjectName("DashboardMuted"); qq_permissions_hint.setWordWrap(True); qpl.addWidget(qq_permissions_hint)
+        qq_add_row=QHBoxLayout(); qq_add_row.setContentsMargins(0,0,0,0); qq_add_row.setSpacing(8)
+        self._qq_allowed_users_input=QLineEdit(); self._qq_allowed_users_input.setObjectName("SettingsLineEdit"); self._qq_allowed_users_input.setPlaceholderText("输入 QQ 号后添加"); self._qq_allowed_users_input.setClearButtonEnabled(True); self._qq_allowed_users_input.returnPressed.connect(self._on_add_qq_allowed_user); qq_add_row.addWidget(self._qq_allowed_users_input,1)
+        qq_add=QPushButton("添加"); qq_add.setObjectName("DashboardSecondaryButton"); qq_add.setFixedSize(72,32); qq_add.clicked.connect(lambda _checked=False: self._on_add_qq_allowed_user()); qq_add_row.addWidget(qq_add)
+        qpl.addLayout(qq_add_row)
+        self._qq_allowed_user_ids=[]
+        self._qq_allowed_users_list=QListWidget(); self._qq_allowed_users_list.setObjectName("QQWhitelistList"); self._qq_allowed_users_list.setSelectionMode(QListWidget.NoSelection); self._qq_allowed_users_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff); self._qq_allowed_users_list.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded); self._qq_allowed_users_list.setVerticalScrollMode(QListWidget.ScrollPerPixel); self._qq_allowed_users_list.setFixedHeight(132); self._qq_allowed_users_list.setSpacing(4); qpl.addWidget(self._qq_allowed_users_list)
+        layout.addWidget(qq_permissions)
+        actions=QHBoxLayout(); actions.addStretch(); save=QPushButton("保存设置"); save.setObjectName("DashboardPrimaryButton"); save.clicked.connect(self._save_proactive); actions.addWidget(save); layout.addLayout(actions); layout.addStretch()
+        scroll.setWidget(inner); outer_layout.addWidget(scroll,1); return page
 
-    def _voice_page(self):
-        page,layout=self._page_shell("语音设置","本地TTS合成干声 + DDSP变声成六花音色。六花自己决定何时开口（speak 工具）。")
+    def _gptsovits_page(self):
+        page,layout=self._page_shell("GPT-SoVITS 设置","六花定制音色引擎（v4）。语音开关、说话偏好与推理参数改动保存后对下一次合成生效，无需重启服务。")
         scroll=QScrollArea(); scroll.setObjectName("SettingsScrollArea"); scroll.setWidgetResizable(True); scroll.setFrameShape(QFrame.NoFrame)
         inner=QWidget(); il=QVBoxLayout(inner); il.setContentsMargins(0,6,6,6); il.setSpacing(10)
         switch=QFrame(); switch.setObjectName("SettingsOptionCard"); wl=QVBoxLayout(switch); wl.setContentsMargins(14,12,14,12); wl.setSpacing(6)
         self._voice_enabled=SettingsToggle(); wl.addLayout(self._settings_field("启用六花语音",self._voice_enabled)); il.addWidget(switch)
-        model=QFrame(); model.setObjectName("SettingsOptionCard"); ml=QVBoxLayout(model); ml.setContentsMargins(14,12,14,12); ml.setSpacing(6)
-        model_title=QLabel("DDSP 变声模型"); model_title.setObjectName("SettingsFieldLabel"); ml.addWidget(model_title)
-        model_hint=QLabel("六花音色的训练模型（.pt 文件）路径。"); model_hint.setObjectName("DashboardMuted"); ml.addWidget(model_hint)
-        self._voice_model=QLineEdit(); self._voice_model.setObjectName("SettingsLineEdit"); ml.addWidget(self._voice_model); il.addWidget(model)
-        tts=QFrame(); tts.setObjectName("SettingsOptionCard"); ttl=QVBoxLayout(tts); ttl.setContentsMargins(14,12,14,12); ttl.setSpacing(6)
-        tts_title=QLabel("TTS 引擎"); tts_title.setObjectName("SettingsFieldLabel"); ttl.addWidget(tts_title)
-        tts_hint=QLabel("gptsovits=用六花微调模型直接合成她的声音(推荐,免DDSP)；vits=MeloTTS干声+DDSP变声；kokoro=24kHz轻量。"); tts_hint.setObjectName("DashboardMuted"); tts_hint.setWordWrap(True); ttl.addWidget(tts_hint)
-        self._voice_engine=QComboBox(); self._voice_engine.addItem("gptsovits (六花定制音色)","gptsovits"); self._voice_engine.addItem("vits (MeloTTS 44.1kHz)","vits"); self._voice_engine.addItem("kokoro (24kHz 轻量)","kokoro"); ttl.addLayout(self._settings_field("引擎",self._voice_engine)); il.addWidget(tts)
-        infer=QFrame(); infer.setObjectName("SettingsOptionCard"); infl=QVBoxLayout(infer); infl.setContentsMargins(14,12,14,12); infl.setSpacing(6)
-        infer_title=QLabel("推理参数"); infer_title.setObjectName("SettingsFieldLabel"); infl.addWidget(infer_title)
-        infer_hint=QLabel("影响合成速度与听感，通常保持默认即可。"); infer_hint.setObjectName("DashboardMuted"); infl.addWidget(infer_hint)
-        self._voice_step=self._make_settings_spinbox(1,200," 步"); infl.addLayout(self._settings_field("推理步数",self._voice_step))
-        self._voice_method=QComboBox(); self._voice_method.addItems(["euler","rk4"]); infl.addLayout(self._settings_field("采样器",self._voice_method))
-        self._voice_ts=QDoubleSpinBox(); self._voice_ts.setRange(0.0,1.0); self._voice_ts.setSingleStep(0.1); infl.addLayout(self._settings_field("t_start",self._voice_ts))
-        self._voice_key=self._make_settings_spinbox(-12,12," 半音"); infl.addLayout(self._settings_field("音高偏移",self._voice_key)); il.addWidget(infer)
         speech=QFrame(); speech.setObjectName("SettingsOptionCard"); sfl=QVBoxLayout(speech); sfl.setContentsMargins(14,12,14,12); sfl.setSpacing(6)
         speech_title=QLabel("说话偏好"); speech_title.setObjectName("SettingsFieldLabel"); sfl.addWidget(speech_title)
         self._voice_lang=QComboBox(); self._voice_lang.addItem("日本語（日语）","ja"); self._voice_lang.addItem("中文","zh"); sfl.addLayout(self._settings_field("六花语言",self._voice_lang))
-        self._voice_max_chars=self._make_settings_spinbox(10,300," 字"); sfl.addLayout(self._settings_field("单次最长字数",self._voice_max_chars))
-        self._voice_speed=QDoubleSpinBox(); self._voice_speed.setRange(0.5,2.0); self._voice_speed.setSingleStep(0.1); sfl.addLayout(self._settings_field("TTS 语速",self._voice_speed)); il.addWidget(speech)
-        post=QFrame(); post.setObjectName("SettingsOptionCard"); pol=QVBoxLayout(post); pol.setContentsMargins(14,12,14,12); pol.setSpacing(6)
-        post_title=QLabel("高频压平（降电音）"); post_title.setObjectName("SettingsFieldLabel"); pol.addWidget(post_title)
-        post_hint=QLabel("对合成成品（gptsovits/vits/kokoro 都生效）做温和低通，压掉 vocoder 高频毛刺和电音感。若听感发闷可调高截止频率或关掉。"); post_hint.setObjectName("DashboardMuted"); post_hint.setWordWrap(True); pol.addWidget(post_hint)
-        self._voice_lowpass=SettingsToggle(); pol.addLayout(self._settings_field("启用高频压平",self._voice_lowpass))
-        self._voice_lowpass_cutoff=self._make_settings_spinbox(5000,18000," Hz"); pol.addLayout(self._settings_field("截止频率",self._voice_lowpass_cutoff)); il.addWidget(post)
-        actions=QHBoxLayout(); actions.addStretch(); save=QPushButton("保存设置"); save.setObjectName("DashboardPrimaryButton"); save.clicked.connect(self._save_voice_settings); actions.addWidget(save); il.addLayout(actions)
-        scroll.setWidget(inner); layout.addWidget(scroll,1); return page
-
-    def _gptsovits_page(self):
-        page,layout=self._page_shell("GPT-SoVITS 设置","六花定制音色引擎（v4）的详细参数。改动保存后对下一次合成生效，无需重启服务。")
-        scroll=QScrollArea(); scroll.setObjectName("SettingsScrollArea"); scroll.setWidgetResizable(True); scroll.setFrameShape(QFrame.NoFrame)
-        inner=QWidget(); il=QVBoxLayout(inner); il.setContentsMargins(0,6,6,6); il.setSpacing(10)
+        self._voice_max_chars=self._make_settings_spinbox(10,300," 字"); sfl.addLayout(self._settings_field("单次最长字数",self._voice_max_chars)); il.addWidget(speech)
         infer=QFrame(); infer.setObjectName("SettingsOptionCard"); infl=QVBoxLayout(infer); infl.setContentsMargins(14,12,14,12); infl.setSpacing(6)
         infer_title=QLabel("推理参数"); infer_title.setObjectName("SettingsFieldLabel"); infl.addWidget(infer_title)
         infer_hint=QLabel("控制六花声音的采样方式与稳定性。多数情况保持默认即可，遇到沙哑/电音/复读再针对性调。"); infer_hint.setObjectName("DashboardMuted"); infer_hint.setWordWrap(True); infl.addWidget(infer_hint)
@@ -1666,7 +1764,7 @@ class SettingsPage(DashboardPage):
         self._gv_url=QLineEdit(); self._gv_url.setObjectName("SettingsLineEdit"); scl.addLayout(self._settings_field_hint("服务地址",self._gv_url,"改端口后需与启动配置一致，否则合成会连不上。一般保持默认 9880。"))
         self._gv_start_timeout=self._make_settings_spinbox(30,300," 秒"); scl.addLayout(self._settings_field_hint("启动超时",self._gv_start_timeout,"调小→等不及会误报启动失败；调大→模型加载慢时能等更久，但真的失败时也要多等。默认 90。"))
         il.addWidget(svc)
-        actions=QHBoxLayout(); actions.addStretch(); save=QPushButton("保存设置"); save.setObjectName("DashboardPrimaryButton"); save.clicked.connect(self._save_gptsovits); actions.addWidget(save); il.addLayout(actions)
+        actions=QHBoxLayout(); actions.addStretch(); save=QPushButton("保存设置"); save.setObjectName("DashboardPrimaryButton"); save.clicked.connect(lambda _checked=False: self._save_gptsovits()); actions.addWidget(save); il.addLayout(actions)
         scroll.setWidget(inner); layout.addWidget(scroll,1); return page
 
     def _make_settings_spinbox(self,minimum,maximum,suffix=""):
@@ -1685,8 +1783,17 @@ class SettingsPage(DashboardPage):
 
     def _refresh_preset_list(self):
         self._pl.clear()
-        for preset in config.get_presets():
-            item=QListWidgetItem(); widget=PresetItemWidget(preset)
+        presets = config.get_presets()
+        active_name = next(
+            (
+                preset.get("name", "")
+                for preset in presets
+                if preset.get("model") == config.MODEL and preset.get("api_base") == config.API_BASE
+            ),
+            "",
+        )
+        for preset in presets:
+            item=QListWidgetItem(); widget=PresetItemWidget(preset, active=preset.get("name") == active_name)
             widget.selection_requested.connect(lambda item=item: self._pl.setCurrentItem(item))
             widget.manage_clicked.connect(self._on_manage_preset)
             widget.use_clicked.connect(self._on_use_preset)
@@ -1703,7 +1810,10 @@ class SettingsPage(DashboardPage):
     def _on_add_preset(self):
         name,ok=QInputDialog.getText(self,"添加预设","预设名称",QLineEdit.Normal,"")
         if ok and name.strip():
-            config.add_preset(name.strip(),"","",""); self._refresh_preset_list()
+            if config.add_preset(name.strip(),"","",""):
+                self._refresh_preset_list()
+            else:
+                QMessageBox.warning(self,"失败","无法创建对话方案，请检查配置文件的写入权限")
 
     def _on_del_preset(self):
         current=self._pl.currentItem()
@@ -1720,24 +1830,200 @@ class SettingsPage(DashboardPage):
     def _on_use_preset(self,preset):
         ok=config.save_user_config({"api_key":preset.get("api_key",""),"model":preset.get("model",""),"api_base":preset.get("api_base","")})
         if ok:
-            self.config_changed.emit(); QMessageBox.information(self,"已应用",f"已切换到预设「{preset['name']}」")
+            self._refresh_preset_list(); self.config_changed.emit(); QMessageBox.information(self,"已应用",f"已切换到预设「{preset['name']}」")
         else: QMessageBox.warning(self,"失败","配置保存失败")
+
+    def _refresh_vision_preset_list(self):
+        self._vision_preset_list.clear()
+        active = config.get_active_vision_preset() or {}
+        active_name = active.get("name", "")
+        for preset in config.get_vision_presets():
+            item=QListWidgetItem(); widget=PresetItemWidget(preset, active=preset.get("name") == active_name)
+            widget.selection_requested.connect(lambda item=item: self._vision_preset_list.setCurrentItem(item))
+            widget.manage_clicked.connect(self._on_manage_vision_preset)
+            widget.use_clicked.connect(self._on_use_vision_preset)
+            hint=widget.sizeHint(); item.setSizeHint(QSize(hint.width(),max(hint.height(),widget.minimumHeight())))
+            self._vision_preset_list.addItem(item); self._vision_preset_list.setItemWidget(item, widget)
+
+    def _on_vision_preset_selection_changed(self,current,previous):
+        previous_widget=self._vision_preset_list.itemWidget(previous) if previous else None
+        if previous_widget: previous_widget.set_selected(False)
+        current_widget=self._vision_preset_list.itemWidget(current) if current else None
+        if current_widget: current_widget.set_selected(True)
+        self._delete_vision_preset_btn.setEnabled(current is not None)
+
+    def _on_add_vision_preset(self):
+        name,ok=QInputDialog.getText(self,"添加识图方案","方案名称",QLineEdit.Normal,"")
+        if ok and name.strip():
+            if config.add_vision_preset(name.strip(),"","",""):
+                self._refresh_vision_preset_list()
+            else:
+                QMessageBox.warning(self,"失败","无法创建识图方案")
+
+    def _on_delete_vision_preset(self):
+        current=self._vision_preset_list.currentItem()
+        if not current: return
+        widget=self._vision_preset_list.itemWidget(current)
+        preset_name=widget._data["name"] if widget else current.text()
+        if QMessageBox.question(self,"确认删除",f"确定删除识图方案“{preset_name}”吗？",QMessageBox.Yes|QMessageBox.No)==QMessageBox.Yes:
+            if config.delete_vision_preset(preset_name):
+                self._refresh_vision_preset_list()
+            else:
+                QMessageBox.warning(self,"失败","无法删除识图方案")
+
+    def _on_manage_vision_preset(self,preset):
+        dialog=VisionPresetEditDialog(preset["name"],preset.get("api_key",""),preset.get("model",""),preset.get("api_base",""),self)
+        if dialog.exec_()==QDialog.Accepted:
+            self._refresh_vision_preset_list()
+
+    def _on_use_vision_preset(self,preset):
+        missing = [
+            label for label, key in (("API Key", "api_key"), ("模型", "model"), ("地址", "api_base"))
+            if not str(preset.get(key, "")).strip()
+        ]
+        if missing:
+            QMessageBox.warning(self,"无法启用",f"识图方案缺少：{'、'.join(missing)}")
+            return
+        if config.set_active_vision_preset(preset.get("name", "")):
+            self._refresh_vision_preset_list()
+            self.config_changed.emit()
+            QMessageBox.information(self,"已启用",f"已启用识图方案「{preset['name']}」")
+        else:
+            QMessageBox.warning(self,"失败","无法启用识图方案")
+
+    def _refresh_image_generation_preset_list(self):
+        self._image_generation_preset_list.clear()
+        active = config.get_active_image_generation_preset() or {}
+        active_name = active.get("name", "")
+        for preset in config.get_image_generation_presets():
+            item=QListWidgetItem(); widget=PresetItemWidget(preset, active=preset.get("name") == active_name)
+            widget.selection_requested.connect(lambda item=item: self._image_generation_preset_list.setCurrentItem(item))
+            widget.manage_clicked.connect(self._on_manage_image_generation_preset)
+            widget.use_clicked.connect(self._on_use_image_generation_preset)
+            hint=widget.sizeHint(); item.setSizeHint(QSize(hint.width(),max(hint.height(),widget.minimumHeight())))
+            self._image_generation_preset_list.addItem(item); self._image_generation_preset_list.setItemWidget(item, widget)
+
+    def _on_image_generation_preset_selection_changed(self,current,previous):
+        previous_widget=self._image_generation_preset_list.itemWidget(previous) if previous else None
+        if previous_widget: previous_widget.set_selected(False)
+        current_widget=self._image_generation_preset_list.itemWidget(current) if current else None
+        if current_widget: current_widget.set_selected(True)
+        self._delete_image_generation_preset_btn.setEnabled(current is not None)
+
+    def _on_add_image_generation_preset(self):
+        name,ok=QInputDialog.getText(self,"添加生图方案","方案名称",QLineEdit.Normal,"")
+        if ok and name.strip():
+            if config.add_image_generation_preset(name.strip(),"","",""):
+                self._refresh_image_generation_preset_list()
+            else:
+                QMessageBox.warning(self,"失败","无法创建生图方案")
+
+    def _on_delete_image_generation_preset(self):
+        current=self._image_generation_preset_list.currentItem()
+        if not current: return
+        widget=self._image_generation_preset_list.itemWidget(current)
+        preset_name=widget._data["name"] if widget else current.text()
+        if QMessageBox.question(self,"确认删除",f"确定删除生图方案“{preset_name}”吗？",QMessageBox.Yes|QMessageBox.No)==QMessageBox.Yes:
+            if config.delete_image_generation_preset(preset_name):
+                self._refresh_image_generation_preset_list()
+            else:
+                QMessageBox.warning(self,"失败","无法删除生图方案")
+
+    def _on_manage_image_generation_preset(self,preset):
+        dialog=ImageGenerationPresetEditDialog(preset["name"],preset.get("api_key",""),preset.get("model",""),preset.get("api_base",""),self)
+        if dialog.exec_()==QDialog.Accepted:
+            self._refresh_image_generation_preset_list()
+
+    def _on_use_image_generation_preset(self,preset):
+        if config.set_active_image_generation_preset(preset.get("name", "")):
+            self._refresh_image_generation_preset_list()
+            self.config_changed.emit()
+            QMessageBox.information(self,"已启用",f"已启用生图方案「{preset['name']}」")
+        else:
+            QMessageBox.warning(self,"失败","无法启用生图方案")
 
     def _save_smart_search(self):
         config.save_user_config({"smart_search_max_results":self._smr.value(),"smart_search_max_analyze":self._sma.value(),"smart_search_max_candidates":self._smc.value()}); self.config_changed.emit(); QMessageBox.information(self,"已保存","智能搜图设置已更新")
 
+    @staticmethod
+    def _parse_qq_allowed_users(value):
+        """Normalize comma/whitespace-separated QQ numbers for the permission list."""
+        entries = [entry for entry in re.split(r"[,，;；\s]+", str(value).strip()) if entry]
+        invalid = [entry for entry in entries if not re.fullmatch(r"\d{5,12}", entry)]
+        if invalid:
+            raise ValueError("、".join(invalid))
+
+        users = []
+        seen = set()
+        for entry in entries:
+            user_id = int(entry)
+            if user_id not in seen:
+                seen.add(user_id)
+                users.append(user_id)
+        return users
+
+    def _set_qq_allowed_users(self, user_ids):
+        self._qq_allowed_user_ids = []
+        seen = set()
+        for value in user_ids or []:
+            entry = str(value).strip()
+            if not re.fullmatch(r"\d{5,12}", entry):
+                continue
+            user_id = int(entry)
+            if user_id not in seen:
+                seen.add(user_id)
+                self._qq_allowed_user_ids.append(user_id)
+        self._refresh_qq_allowed_users()
+
+    def _refresh_qq_allowed_users(self):
+        self._qq_allowed_users_list.clear()
+        if not self._qq_allowed_user_ids:
+            empty = QListWidgetItem("当前没有 QQ 用户拥有受限操作权限")
+            empty.setTextAlignment(Qt.AlignCenter)
+            empty.setFlags(Qt.NoItemFlags)
+            self._qq_allowed_users_list.addItem(empty)
+            return
+        for user_id in self._qq_allowed_user_ids:
+            item = QListWidgetItem()
+            item.setSizeHint(QSize(0, 38))
+            self._qq_allowed_users_list.addItem(item)
+            row = QQWhitelistRow(user_id)
+            row.delete_requested.connect(self._remove_qq_allowed_user)
+            self._qq_allowed_users_list.setItemWidget(item, row)
+
+    def _on_add_qq_allowed_user(self):
+        try:
+            new_users = self._parse_qq_allowed_users(self._qq_allowed_users_input.text())
+        except ValueError as exc:
+            QMessageBox.warning(self, "QQ 白名单格式不正确", f"以下 QQ 号无效：{exc}\n请输入 5 至 12 位数字。")
+            return
+        if not new_users:
+            return
+        existing = set(self._qq_allowed_user_ids)
+        self._qq_allowed_user_ids.extend(user_id for user_id in new_users if user_id not in existing)
+        self._qq_allowed_users_input.clear()
+        self._refresh_qq_allowed_users()
+
+    def _remove_qq_allowed_user(self, user_id):
+        self._qq_allowed_user_ids = [value for value in self._qq_allowed_user_ids if value != user_id]
+        self._refresh_qq_allowed_users()
+
     def _save_proactive(self):
-        config.save_user_config({"proactive_enabled":self._pcb.isChecked(),"proactive_qq_enabled":self._qqcb.isChecked(),"proactive_slack_enabled":self._slack_cb.isChecked(),"proactive_slack_prob":self._sp.value(),"proactive_slack_cooldown":self._sc.value(),"rotation_threshold":self._rt.value(),"auto_start":self._ascb.isChecked()}); self.config_changed.emit(); QMessageBox.information(self,"已保存","主动聊天设置已更新")
+        saved = config.save_user_config({"proactive_enabled":self._pcb.isChecked(),"proactive_qq_enabled":self._qqcb.isChecked(),"screen_sense_enabled":self._slack_cb.isChecked(),"screen_sense_interval_min":self._si.value(),"proactive_dnd_start":self._dnd_start.value(),"proactive_dnd_end":self._dnd_end.value(),"qq_group_mode":self._gmode.currentData(),"qq_group_score_threshold":self._gscore.value(),"rotation_threshold":self._rt.value(),"auto_start":self._ascb.isChecked(),"qq_allowed_users":list(self._qq_allowed_user_ids)})
+        if saved:
+            self.config_changed.emit()
+            QMessageBox.information(self,"已保存","主动聊天设置已更新")
+        else:
+            QMessageBox.warning(self,"保存失败","主动聊天设置未能保存，请检查配置目录是否可写。")
 
     def _save_diary_auto(self):
         config.save_user_config({"diary_auto_summary_enabled": self._das_enabled.isChecked(), "diary_auto_summary_hour": self._das_hour.currentData()}); self.config_changed.emit(); QMessageBox.information(self,"已保存","日记自动收尾设置已更新")
 
-    def _save_voice_settings(self,notify=True):
-        config.save_user_config({"voice_enabled":self._voice_enabled.isChecked(),"voice_tts_engine":self._voice_engine.currentData(),"voice_model_path":self._voice_model.text().strip(),"voice_infer_step":self._voice_step.value(),"voice_method":self._voice_method.currentText(),"voice_t_start":self._voice_ts.value(),"voice_key":self._voice_key.value(),"voice_max_chars":self._voice_max_chars.value(),"voice_tts_speed":self._voice_speed.value(),"voice_post_lowpass":self._voice_lowpass.isChecked(),"voice_post_lowpass_cutoff":self._voice_lowpass_cutoff.value(),"persona_language":self._voice_lang.currentData()}); self.config_changed.emit()
-        if notify: QMessageBox.information(self,"已保存","语音设置已更新（语言切换下一条消息生效）")
-
     def _save_gptsovits(self,notify=True):
-        config.save_user_config({
+        saved = config.save_user_config({
+            "voice_enabled":self._voice_enabled.isChecked(),
+            "voice_max_chars":self._voice_max_chars.value(),
+            "persona_language":self._voice_lang.currentData(),
             "gptsovits_speed_factor":self._gv_speed.value(),
             "gptsovits_temperature":self._gv_temp.value(),
             "gptsovits_top_k":self._gv_topk.value(),
@@ -1750,18 +2036,49 @@ class SettingsPage(DashboardPage):
             "gptsovits_prompt_lang":self._gv_prompt_lang.currentData(),
             "gptsovits_url":self._gv_url.text().strip(),
             "gptsovits_start_timeout":self._gv_start_timeout.value(),
-        }); self.config_changed.emit()
-        if notify: QMessageBox.information(self,"已保存","GPT-SoVITS 参数已更新（下一次合成生效）")
+        })
+        if not saved:
+            if notify:
+                QMessageBox.warning(self, "保存失败", "GPT-SoVITS 设置未能写入配置文件。")
+            return False
+        self.config_changed.emit()
+        if notify:
+            QMessageBox.information(
+                self, "已保存", "GPT-SoVITS 设置已保存，下一次语音合成将使用新配置。"
+            )
+        return True
 
     def _sleep_compute_page(self):
         """Sleep-time Compute 设置页面 - 深度记忆整合"""
+        from gui.sleep_compute_assets import sleep_compute_asset_pixmap
         from gui.sleep_compute_settings import SleepComputeSettingsWidget
         page, layout = self._page_shell(
             "Sleep-time Compute",
             "每天凌晨自动运行深度记忆整合，识别重复记忆、提取行为模式、生成连贯叙事，让六花越来越懂你。"
         )
-        # 直接使用已开发好的完整设置界面
+        heading = page.findChild(QLabel, "SettingsPageTitle")
+        if heading is not None:
+            title_row = QWidget()
+            title_layout = QHBoxLayout(title_row)
+            title_layout.setContentsMargins(0, 0, 0, 0)
+            title_layout.setSpacing(8)
+            moon = QLabel()
+            moon.setObjectName("SleepPageMoon")
+            moon.setFixedSize(28, 28)
+            moon.setAlignment(Qt.AlignCenter)
+            moon.setPixmap(
+                sleep_compute_asset_pixmap("decor.moon", QSize(28, 28))
+            )
+            title_layout.addWidget(moon)
+            title = QLabel("Sleep-time Compute")
+            title.setObjectName("SettingsPageTitle")
+            title_layout.addWidget(title)
+            title_layout.addStretch()
+            layout.replaceWidget(heading, title_row)
+            heading.deleteLater()
         sleep_widget = SleepComputeSettingsWidget()
+        sleep_widget.settings_saved.connect(self.config_changed.emit)
+        self._sleep_compute_widget = sleep_widget
         layout.addWidget(sleep_widget, 1)
         return page
 
@@ -1851,10 +2168,12 @@ class SettingsPage(DashboardPage):
                 self.nav.setCurrentRow(index); return
 
     def _filter_settings(self, query):
-        normalized = "".join(str(query).casefold().split())
+        normalized = _normalize_settings_search_text(query)
         first_match = None
         for index, (name, detail, _icon) in enumerate(self._settings_categories):
-            haystack = "".join((name + detail + self._settings_search_terms[index]).casefold().split())
+            haystack = _normalize_settings_search_text(
+                name + detail + self._settings_search_terms[index]
+            )
             matches = not normalized or normalized in haystack
             self.nav.item(index).setHidden(not matches)
             if matches and first_match is None:
@@ -1927,19 +2246,21 @@ class SettingsPage(DashboardPage):
         self._loading_appearance = False
         chat=config.get_chat_settings(); self.temperature.setValue(int(float(chat["temperature"])*100)); self.max_tokens.setValue(int(chat["chat_max_tokens"])); self.memory_check.setChecked(bool(chat["chat_memory_enabled"])); self.web_check.setChecked(bool(chat["chat_web_search_enabled"])); self.citations_check.setChecked(bool(chat["chat_citations_enabled"]))
         self._smr.setValue(int(config.SMART_SEARCH_MAX_RESULTS)); self._smc.setValue(int(config.SMART_SEARCH_MAX_CANDIDATES)); self._sma.setValue(int(config.SMART_SEARCH_MAX_ANALYZE))
-        self._pcb.setChecked(bool(config.PROACTIVE_ENABLED)); self._qqcb.setChecked(bool(getattr(config,"PROACTIVE_QQ_ENABLED",False))); self._slack_cb.setChecked(bool(config.PROACTIVE_SLACK_ENABLED)); self._sp.setValue(int(config.PROACTIVE_SLACK_PROB)); self._sc.setValue(int(getattr(config,"PROACTIVE_SLACK_COOLDOWN",60))); self._rt.setValue(int(config.ROTATION_THRESHOLD)); self._ascb.setChecked(bool(config.AUTO_START))
+        self._pcb.setChecked(bool(config.PROACTIVE_ENABLED)); self._qqcb.setChecked(bool(getattr(config,"PROACTIVE_QQ_ENABLED",False))); self._set_qq_allowed_users(config.get_qq_allowed_users()); self._slack_cb.setChecked(bool(getattr(config,"SCREEN_SENSE_ENABLED",True))); self._si.setValue(int(getattr(config,"SCREEN_SENSE_INTERVAL_MIN",12))); self._dnd_start.setValue(int(getattr(config,"PROACT_DND_START",23))); self._dnd_end.setValue(int(getattr(config,"PROACT_DND_END",8))); gidx=self._gmode.findData(str(getattr(config,"QQ_GROUP_MODE","smart"))); self._gmode.setCurrentIndex(gidx if gidx>=0 else 0); self._gscore.setValue(int(getattr(config,"QQ_GROUP_SCORE_THRESHOLD",60))); self._rt.setValue(int(config.ROTATION_THRESHOLD)); self._ascb.setChecked(bool(config.AUTO_START))
         self._das_enabled.setChecked(bool(getattr(config,"DIARY_AUTO_SUMMARY_ENABLED",True))); didx=self._das_hour.findData(int(getattr(config,"DIARY_AUTO_SUMMARY_HOUR",23))); self._das_hour.setCurrentIndex(didx if didx>=0 else 23)
         self._surf_enabled.setChecked(bool(getattr(config,"SURF_AUTO_ENABLED",True))); self._surf_interval.setValue(int(getattr(config,"SURF_AUTO_INTERVAL_MIN",180))); self._surf_tags_round.setValue(int(getattr(config,"SURF_TAGS_PER_ROUND",4))); self._surf_limit.setValue(int(getattr(config,"SURF_SEARCH_LIMIT",2))); self._surf_cooldown.setValue(int(getattr(config,"SURF_TAG_COOLDOWN_HOURS",48))); self._surf_decay.setValue(int(getattr(config,"SURF_TAG_DECAY_PER_7_DAYS",3))); self._surf_liked.setValue(int(getattr(config,"SURF_REACTION_LIKED",10))); self._surf_disliked.setValue(int(getattr(config,"SURF_REACTION_DISLIKED",5)))
         self._refresh_surf_tags()
-        self._voice_enabled.setChecked(bool(config.VOICE_ENABLED)); self._voice_model.setText(str(config.VOICE_MODEL_PATH)); self._voice_step.setValue(int(config.VOICE_INFER_STEP)); self._voice_method.setCurrentText(config.VOICE_METHOD); self._voice_ts.setValue(float(config.VOICE_T_START)); self._voice_key.setValue(int(config.VOICE_KEY)); self._voice_max_chars.setValue(int(config.VOICE_MAX_CHARS)); self._voice_speed.setValue(float(config.VOICE_TTS_SPEED)); self._voice_lowpass.setChecked(bool(config.VOICE_POST_LOWPASS)); self._voice_lowpass_cutoff.setValue(int(config.VOICE_POST_LOWPASS_CUTOFF))
-        idx=self._voice_engine.findData(config.VOICE_TTS_ENGINE); self._voice_engine.setCurrentIndex(idx if idx>=0 else 0)
-        lidx=self._voice_lang.findData(config.PERSONA_LANGUAGE); self._voice_lang.setCurrentIndex(lidx if lidx>=0 else 0)
-        self._gv_speed.setValue(float(config.GPT_SOVITS_SPEED_FACTOR)); self._gv_temp.setValue(float(config.GPT_SOVITS_TEMPERATURE)); self._gv_topk.setValue(int(config.GPT_SOVITS_TOP_K)); self._gv_topp.setValue(float(config.GPT_SOVITS_TOP_P)); self._gv_steps.setValue(int(config.GPT_SOVITS_SAMPLE_STEPS)); self._gv_rp.setValue(float(config.GPT_SOVITS_REPETITION_PENALTY))
-        sidx=self._gv_split.findData(config.GPT_SOVITS_TEXT_SPLIT_METHOD); self._gv_split.setCurrentIndex(sidx if sidx>=0 else 0)
-        self._gv_ref_audio.setText(str(config.GPT_SOVITS_REF_AUDIO)); self._gv_ref_text.setText(str(config.GPT_SOVITS_REF_TEXT))
-        plidx=self._gv_prompt_lang.findData(config.GPT_SOVITS_PROMPT_LANG); self._gv_prompt_lang.setCurrentIndex(plidx if plidx>=0 else 0)
-        self._gv_url.setText(str(config.GPT_SOVITS_URL)); self._gv_start_timeout.setValue(int(config.GPT_SOVITS_START_TIMEOUT))
+        if getattr(self, "_voice_enabled", None) is not None:  # GPT-SoVITS 页面已下线（未装配时跳过）
+            self._voice_enabled.setChecked(bool(config.VOICE_ENABLED)); self._voice_max_chars.setValue(int(config.VOICE_MAX_CHARS))
+            lidx=self._voice_lang.findData(config.PERSONA_LANGUAGE); self._voice_lang.setCurrentIndex(lidx if lidx>=0 else 0)
+            self._gv_speed.setValue(float(config.GPT_SOVITS_SPEED_FACTOR)); self._gv_temp.setValue(float(config.GPT_SOVITS_TEMPERATURE)); self._gv_topk.setValue(int(config.GPT_SOVITS_TOP_K)); self._gv_topp.setValue(float(config.GPT_SOVITS_TOP_P)); self._gv_steps.setValue(int(config.GPT_SOVITS_SAMPLE_STEPS)); self._gv_rp.setValue(float(config.GPT_SOVITS_REPETITION_PENALTY))
+            sidx=self._gv_split.findData(config.GPT_SOVITS_TEXT_SPLIT_METHOD); self._gv_split.setCurrentIndex(sidx if sidx>=0 else 0)
+            self._gv_ref_audio.setText(str(config.GPT_SOVITS_REF_AUDIO)); self._gv_ref_text.setText(str(config.GPT_SOVITS_REF_TEXT))
+            plidx=self._gv_prompt_lang.findData(config.GPT_SOVITS_PROMPT_LANG); self._gv_prompt_lang.setCurrentIndex(plidx if plidx>=0 else 0)
+            self._gv_url.setText(str(config.GPT_SOVITS_URL)); self._gv_start_timeout.setValue(int(config.GPT_SOVITS_START_TIMEOUT))
         self._refresh_preset_list()
+        self._refresh_vision_preset_list()
+        self._refresh_image_generation_preset_list()
 
     def _save_appearance(self, notify=False):
         selected=next((b.value for b in self.theme_buttons if b.is_selected()),"spring"); config.save_user_config({"appearance_mode":"seasonal_auto" if self._seasonal_toggle.isChecked() else "manual","appearance_theme":selected}); self.config_changed.emit()
@@ -1973,9 +2294,6 @@ class SettingsPage(DashboardPage):
     def resizeEvent(self,event):
         super().resizeEvent(event)
         self._reposition_settings_decor()
-        if self.top_bar is not None:
-            w = max(0, min(self.width() - 20, 1115 if self.width() >= 1250 else max(600, self.width() - 190)))
-            self.top_bar.setGeometry(max(0, self.width() - w), 23, w, 46)
         # Keep the desktop composition, but switch to a compact two-column
         # choice grid and narrower navigation before the window reaches its
         # supported minimum width.

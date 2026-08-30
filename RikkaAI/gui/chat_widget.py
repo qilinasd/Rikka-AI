@@ -22,7 +22,7 @@ from gui.image_utils import circular_pixmap
 
 
 class MessageBubble(QFrame):
-    def __init__(self, text="", is_user=False, image_path=None, sender=None, parent=None):
+    def __init__(self, text="", is_user=False, image_path=None, sender=None, system=False, parent=None):
         super().__init__(parent)
         self.setObjectName("MessageRow")
         self.text_label = None
@@ -33,7 +33,12 @@ class MessageBubble(QFrame):
         row.setSpacing(10)
 
         card = QFrame()
-        if is_user:
+        if system:
+            # 系统提示气泡：左对齐、居中灰紫色、小字
+            card.setObjectName("SystemBubble")
+            meta_text = "🛠 系统 · 刚刚"
+            meta_obj, text_obj = "SystemBubbleMeta", "SystemBubbleText"
+        elif is_user:
             card.setObjectName("UserBubble")
             meta_text = "你 · 刚刚"
             meta_obj, text_obj = "UserBubbleMeta", "UserBubbleText"
@@ -88,6 +93,10 @@ class MessageBubble(QFrame):
             # 「你」和 QQ「对方」消息都靠最右边（对方消息用独立配色区分，不误当「你」）
             row.addStretch()
             row.addWidget(card)
+        elif system:
+            # 系统提示：左对齐、无头像、紧凑小号
+            row.addWidget(card)
+            row.addStretch()
         else:
             avatar = QLabel()
             avatar.setObjectName("BubbleAvatar")
@@ -158,6 +167,145 @@ class StreamingBubble(MessageBubble):
         if not self._alive():
             return
         self.text_label.setText(self._base_text)
+
+
+class VoiceSynthesizingBubble(QFrame):
+    """语音合成进度气泡：显示"六花正在合成语音中..."的状态，带百分比进度条。"""
+
+    def __init__(self, text="", parent=None):
+        super().__init__(parent)
+        self.setObjectName("MessageRow")
+        self._text = text
+        self._timer = None
+        self._progress = 0
+
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(10)
+
+        # 六花头像
+        avatar = QLabel()
+        avatar_path = os.path.join(config.ASSETS_DIR, "images", "rikka_avatar.png")
+        if os.path.exists(avatar_path):
+            avatar.setPixmap(circular_pixmap(avatar_path, 38))
+        avatar.setFixedSize(38, 38)
+
+        # 进度卡片
+        card = QFrame()
+        card.setObjectName("AIBubble")
+        card.setMaximumWidth(690)
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(16, 13, 16, 14)
+        card_layout.setSpacing(10)
+
+        # 元信息
+        meta = QLabel("RikkaAI · 语音合成中")
+        meta.setObjectName("AIBubbleMeta")
+        card_layout.addWidget(meta)
+
+        # 状态文本
+        self.status_label = QLabel("🎙️ 六花正在为你合成语音...")
+        self.status_label.setObjectName("AIBubbleText")
+        self.status_label.setWordWrap(True)
+        card_layout.addWidget(self.status_label)
+
+        # 进度条 + 百分比
+        progress_row = QHBoxLayout()
+        progress_row.setSpacing(8)
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setObjectName("VoiceSynthProgress")
+        self.progress_bar.setRange(0, 100)  # 百分比进度
+        self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.setFixedHeight(6)
+        progress_row.addWidget(self.progress_bar)
+
+        self.progress_label = QLabel("0%")
+        self.progress_label.setObjectName("VoiceBubbleMeta")
+        self.progress_label.setFixedWidth(35)
+        progress_row.addWidget(self.progress_label)
+
+        card_layout.addLayout(progress_row)
+
+        # 如果有文本预览，显示出来
+        if text:
+            preview = QLabel(f"内容：{text[:50]}{'...' if len(text) > 50 else ''}")
+            preview.setObjectName("VoiceBubbleMeta")
+            preview.setWordWrap(True)
+            card_layout.addWidget(preview)
+
+        row.addWidget(avatar, 0, Qt.AlignTop)
+        row.addWidget(card)
+        row.addStretch()
+
+        # 启动模拟进度动画
+        self._start_progress_animation()
+
+    def _start_progress_animation(self):
+        """启动渐进式进度动画（模拟，非真实进度）"""
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._update_progress)
+        self._timer.start(150)  # 每150ms更新一次
+
+    def _update_progress(self):
+        """更新进度（渐进式，最多到95%，剩余5%等真实完成）"""
+        try:
+            if self._progress < 95:
+                # 前期快，后期慢（模拟真实合成过程）
+                if self._progress < 30:
+                    increment = 3  # 0-30%：快速
+                elif self._progress < 70:
+                    increment = 2  # 30-70%：中速
+                else:
+                    increment = 1  # 70-95%：慢速
+
+                self._progress += increment
+                if hasattr(self, 'progress_bar') and self.progress_bar is not None:
+                    self.progress_bar.setValue(self._progress)
+                if hasattr(self, 'progress_label') and self.progress_label is not None:
+                    self.progress_label.setText(f"{self._progress}%")
+        except RuntimeError:
+            # Widget已被删除，停止定时器
+            if self._timer:
+                self._timer.stop()
+
+    def set_progress(self, value):
+        """设置进度 (0-100)"""
+        try:
+            self._progress = min(100, max(0, value))
+            if hasattr(self, 'progress_bar') and self.progress_bar is not None:
+                self.progress_bar.setValue(self._progress)
+            if hasattr(self, 'progress_label') and self.progress_label is not None:
+                self.progress_label.setText(f"{self._progress}%")
+        except RuntimeError:
+            pass
+
+    def set_complete(self):
+        """设置为100%完成"""
+        try:
+            if self._timer:
+                self._timer.stop()
+            self.set_progress(100)
+            if hasattr(self, 'status_label') and self.status_label is not None:
+                self.status_label.setText("✅ 语音合成完成！")
+        except RuntimeError:
+            pass
+
+    def set_status(self, status_text):
+        """更新状态文本"""
+        try:
+            if hasattr(self, 'status_label') and self.status_label is not None:
+                self.status_label.setText(status_text)
+        except RuntimeError:
+            pass
+
+    def deleteLater(self):
+        """清理定时器"""
+        if self._timer:
+            self._timer.stop()
+            self._timer = None
+        super().deleteLater()
 
 
 class VoiceBubble(QFrame):
@@ -320,9 +468,14 @@ class ServiceBanner(QFrame):
         row.addStretch()
 
     def update_progress(self, percent, text=None):
-        self.bar.setValue(max(0, min(100, int(percent))))
-        if text:
-            self.title_label.setText(text)
+        try:
+            if hasattr(self, 'bar') and self.bar is not None:
+                self.bar.setValue(max(0, min(100, int(percent))))
+            if text and hasattr(self, 'title_label') and self.title_label is not None:
+                self.title_label.setText(text)
+        except RuntimeError:
+            # Widget已被删除，忽略
+            pass
 
 
 class ChatWidget(QWidget):
@@ -372,12 +525,50 @@ class ChatWidget(QWidget):
         self._scroll_to_bottom()
         self._trim_messages()
 
+    def add_system_bubble(self, text=""):
+        """插入一条左对齐的【系统提示】气泡（如"六花已调用 天气查询 工具"）。"""
+        bubble = MessageBubble(text, system=True)
+        self.message_layout.insertWidget(self.message_layout.count() - 1, bubble)
+        self._scroll_to_bottom()
+        self._trim_messages()
+
     def add_voice_message(self, text="", translation="", audio_path=""):
         bubble = VoiceBubble(text=text, translation=translation, audio_path=audio_path)
         self.message_layout.insertWidget(self.message_layout.count() - 1, bubble)
         self._scroll_to_bottom()
         self._trim_messages()
         return bubble
+
+    def show_voice_synthesizing(self, text=""):
+        """显示语音合成进度气泡，返回气泡对象供后续更新/移除"""
+        # 先移除旧的合成进度气泡（如果有）
+        self.remove_voice_synthesizing()
+
+        bubble = VoiceSynthesizingBubble(text=text)
+        self.message_layout.insertWidget(self.message_layout.count() - 1, bubble)
+        self._scroll_to_bottom()
+
+        # 保存引用，便于后续移除
+        self._synthesizing_bubble = bubble
+        return bubble
+
+    def remove_voice_synthesizing(self):
+        """移除语音合成进度气泡"""
+        if hasattr(self, '_synthesizing_bubble') and self._synthesizing_bubble is not None:
+            try:
+                self.message_layout.removeWidget(self._synthesizing_bubble)
+                self._synthesizing_bubble.deleteLater()
+            except RuntimeError:
+                pass
+            self._synthesizing_bubble = None
+
+    def update_voice_synthesizing_status(self, status_text):
+        """更新语音合成状态文本"""
+        if hasattr(self, '_synthesizing_bubble') and self._synthesizing_bubble is not None:
+            try:
+                self._synthesizing_bubble.set_status(status_text)
+            except RuntimeError:
+                pass
 
     def add_service_banner(self, title=""):
         banner = ServiceBanner(title)
@@ -416,6 +607,18 @@ class ChatWidget(QWidget):
             return
         if sid == self._active_sid:
             self._scroll_to_bottom()
+
+    def finalize_streaming_text(self, sid=None, text=""):
+        """流式结束后用最终文本覆盖气泡（清洗流式期间已打出的"口头调用工具"旁白）。
+        必须在 stop_streaming 之前调用（气泡还挂在 _stream_bubbles 里）。"""
+        if sid is None:
+            sid = self._active_sid
+        b = self._stream_bubbles.get(sid)
+        if b is None or b.text_label is None or not text:
+            return
+        if text != b.text_label.text():
+            b.text_label.setText(text)
+            b._search_text = text
 
     def stop_streaming(self, sid=None):
         """结束流式。sid 缺省 = 结束当前正在显示的气泡。

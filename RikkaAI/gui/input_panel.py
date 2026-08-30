@@ -21,7 +21,6 @@ class InputPanel(QWidget):
     send_message = pyqtSignal(str)
     send_image = pyqtSignal(str)
     open_tools = pyqtSignal()
-    open_knowledge = pyqtSignal()
     qq_bridge_requested = pyqtSignal()
     voice_toggle_requested = pyqtSignal()
     gptsovits_service_requested = pyqtSignal()
@@ -78,12 +77,6 @@ class InputPanel(QWidget):
         self.btn_attachment.clicked.connect(self._on_attachment)
         toolbar.addWidget(self.btn_attachment)
 
-        knowledge_button = self._make_tool_button(
-            "知识库", os.path.join(outline_icons, "knowledge.svg"), "打开知识库"
-        )
-        knowledge_button.clicked.connect(self.open_knowledge.emit)
-        toolbar.addWidget(knowledge_button)
-
         self.btn_qq = self._make_tool_button(
             "QQ 桥接",
             os.path.join(outline_icons, "message.svg"),
@@ -94,25 +87,26 @@ class InputPanel(QWidget):
         self.btn_qq.clicked.connect(self.qq_bridge_requested.emit)
         toolbar.addWidget(self.btn_qq)
 
-        self.btn_voice = self._make_tool_button(
-            "语音",
-            os.path.join(outline_icons, "voice.svg"),
-            "开启/关闭六花语音（由六花自己决定何时开口）",
-        )
-        self.btn_voice.setObjectName("VoiceToolButton")
-        self.btn_voice.setProperty("state", "on" if config.VOICE_ENABLED else "off")
-        self.btn_voice.clicked.connect(self.voice_toggle_requested.emit)
-        toolbar.addWidget(self.btn_voice)
+        if config.VOICE_ENABLED:
+            self.btn_voice = self._make_tool_button(
+                "语音",
+                os.path.join(outline_icons, "voice.svg"),
+                "开启/关闭六花语音（由六花自己决定何时开口）",
+            )
+            self.btn_voice.setObjectName("VoiceToolButton")
+            self.btn_voice.setProperty("state", "on" if config.VOICE_ENABLED else "off")
+            self.btn_voice.clicked.connect(self.voice_toggle_requested.emit)
+            toolbar.addWidget(self.btn_voice)
 
-        self.btn_svc = self._make_tool_button(
-            "语音服务",
-            os.path.join(outline_icons, "music.svg"),
-            "启动 GPT-SoVITS 语音服务（六花音色合成，首次加载需数十秒）",
-        )
-        self.btn_svc.setObjectName("VoiceSvcButton")
-        self.btn_svc.setProperty("state", "stopped")
-        self.btn_svc.clicked.connect(self.gptsovits_service_requested.emit)
-        toolbar.addWidget(self.btn_svc)
+            self.btn_svc = self._make_tool_button(
+                "语音服务",
+                os.path.join(outline_icons, "gptsovits.svg"),
+                "启动 GPT-SoVITS 语音服务（六花音色合成，首次加载需数十秒）",
+            )
+            self.btn_svc.setObjectName("VoiceSvcButton")
+            self.btn_svc.setProperty("state", "stopped")
+            self.btn_svc.clicked.connect(self.gptsovits_service_requested.emit)
+            toolbar.addWidget(self.btn_svc)
 
         stop_button = self._make_tool_button(
             "停止",

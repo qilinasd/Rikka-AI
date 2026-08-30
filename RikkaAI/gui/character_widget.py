@@ -9,7 +9,6 @@ import os
 from PyQt5.QtCore import QSize, Qt, pyqtSignal
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import (
-    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -66,7 +65,6 @@ class NavSidebar(QWidget):
     chat_requested = pyqtSignal()
     history_requested = pyqtSignal()
     memo_requested = pyqtSignal()
-    summary_requested = pyqtSignal()
     diary_requested = pyqtSignal()
     surf_requested = pyqtSignal()
     tools_requested = pyqtSignal()
@@ -75,7 +73,7 @@ class NavSidebar(QWidget):
     def __init__(self, parent=None, active_section="chat"):
         super().__init__(parent)
         self.setObjectName("ChatNavSidebar")
-        self.setFixedWidth(190)
+        self.setFixedWidth(203)
         self._active_section = active_section
         self._nav_buttons = {}
         self._appearance = None
@@ -83,8 +81,8 @@ class NavSidebar(QWidget):
 
     def _setup_ui(self):
         root = QVBoxLayout(self)
-        root.setContentsMargins(6, 16, 10, 14)
-        root.setSpacing(4)
+        root.setContentsMargins(14, 16, 16, 14)
+        root.setSpacing(16)
 
         brand = QHBoxLayout()
         brand.setSpacing(7)
@@ -100,13 +98,11 @@ class NavSidebar(QWidget):
         brand.addWidget(name)
         brand.addStretch()
         root.addLayout(brand)
-        root.addSpacing(14)
+        root.addSpacing(39)
 
         nav_items = [
             ("home", "首页", self.home_requested),
             ("chat", "对话", self.chat_requested),
-            ("knowledge", "知识库", self.summary_requested),
-            ("music", "AI 音乐", self.tools_requested),
             ("diary", "日记", self.diary_requested),
             ("memory", "记忆", self.memo_requested),
             ("history", "历史记录", self.history_requested),
@@ -127,7 +123,7 @@ class NavSidebar(QWidget):
             )
             self._nav_buttons[icon_name] = button
             root.addWidget(button)
-        root.addStretch()
+        root.addStretch(1)
 
     def _activate_and_emit(self, section, signal):
         self.set_active_section(section)
@@ -249,7 +245,6 @@ class CharacterWidget(QWidget):
     session_selected = pyqtSignal(int)
     history_requested = pyqtSignal()
     memo_requested = pyqtSignal()
-    summary_requested = pyqtSignal()
     diary_requested = pyqtSignal()
     tools_requested = pyqtSignal()
     settings_requested = pyqtSignal()
@@ -270,7 +265,6 @@ class CharacterWidget(QWidget):
         self.nav.chat_requested.connect(self.chat_requested.emit)
         self.nav.history_requested.connect(self.history_requested.emit)
         self.nav.memo_requested.connect(self.memo_requested.emit)
-        self.nav.summary_requested.connect(self.summary_requested.emit)
         self.nav.diary_requested.connect(self.diary_requested.emit)
         self.nav.tools_requested.connect(self.tools_requested.emit)
         self.nav.settings_requested.connect(self.settings_requested.emit)

@@ -439,10 +439,31 @@ def get_archivist_stats() -> dict:
 #  🆕 Phase 4: Sleep-time Compute — 深度后台反思
 # ═══════════════════════════════════════════════════════════
 
-def sleep_time_consolidation(lookback_days=7):
-    """后台反思：每天凌晨运行，整合记忆
+def _resolve_sleep_compute_llm():
+    """解析 Sleep-time Compute 实际使用的模型配置。
 
-    使用 DeepSeek v3 进行深度反思：
+    优先级：设置页选中的模型方案（model_preset）→ 旧版 settings.model → 全局 cfg。
+    """
+    model, api_key, api_base = cfg.MODEL, cfg.API_KEY, cfg.API_BASE
+    try:
+        settings = cfg.get_sleep_compute_settings()
+    except Exception:
+        settings = {}
+    if isinstance(settings, dict):
+        preset = settings.get("model_preset")
+        if isinstance(preset, dict):
+            model = preset.get("model") or model
+            api_key = preset.get("api_key") or api_key
+            api_base = preset.get("api_base") or api_base
+        elif settings.get("model"):
+            model = settings["model"]
+    return model, api_key, api_base
+
+
+def sleep_time_consolidation(lookback_days=7):
+    """后台反思：每天 23 点运行，整合记忆
+
+    使用设置页配置的模型（默认跟随主对话模型）进行深度反思：
     - 识别重复或矛盾的记忆
     - 提取长期行为模式
     - 生成连贯的叙事段落
@@ -507,11 +528,13 @@ def sleep_time_consolidation(lookback_days=7):
 
 如果某项为空，返回空数组。"""
 
-        # 3. 调用 DeepSeek v3（使用项目配置的 API）
+        # 3. 调用记忆整合模型（设置页的模型方案优先，回退全局配置）
+        model, api_key, api_base = _resolve_sleep_compute_llm()
+        print(f"[Sleep-time Compute] 使用模型: {model}", flush=True)
         try:
-            client = OpenAI(api_key=cfg.API_KEY, base_url=cfg.API_BASE)
+            client = OpenAI(api_key=api_key, base_url=api_base)
             response = client.chat.completions.create(
-                model="deepseek-chat",  # DeepSeek v3
+                model=model,
                 messages=[{"role": "user", "content": reflection_prompt}],
                 temperature=0.3,
                 max_tokens=2000,
@@ -611,7 +634,7 @@ def _apply_consolidation_result(conn, result: dict):
 
 
 def schedule_sleep_time_compute():
-    """定时触发 Sleep-time Compute（每天凌晨 3 点）
+    """定时触发 Sleep-time Compute（每天 23 点）
 
     使用方式：
     1. 在 main.py 启动时调用此函数
@@ -625,12 +648,53 @@ def schedule_sleep_time_compute():
         """后台工作线程"""
         while True:
             try:
-                now = datetime.now()
+                # 读取配置
+                settings = cfg.get_sleep_compute_settings()
+                if not settings.get("enabled", True):
+                    # 功能已禁用，休眠 30 分钟后再检查
+                    time.sleep(1800)
+                    continue
 
-                # 检查是否是凌晨 3 点（±10分钟窗口）
-                if 2 <= now.hour <= 4 and now.minute < 30:
+                now = datetime.now()
+                exec_time = settings.get("execution_time", "23:00")
+                try:
+                    hour, minute = map(int, exec_time.split(":"))
+                except:
+                    hour, minute = 3, 0
+
+                # 检查是否到达执行时间（±15分钟窗口）
+                target_minutes = hour * 60 + minute
+                current_minutes = now.hour * 60 + now.minute
+                if abs(current_minutes - target_minutes) <= 15:
                     print(f"[Sleep-time Compute] 触发定时反思（{now.strftime('%Y-%m-%d %H:%M')}）", flush=True)
-                    sleep_time_consolidation(lookback_days=7)
+
+                    # 保存原始配置
+                    original_model = cfg.MODEL
+                    original_api_key = cfg.API_KEY
+                    original_api_base = cfg.API_BASE
+
+                    try:
+                        # 应用方案配置
+                        lookback = settings.get("lookback_days", 7)
+                        model_preset = settings.get("model_preset")
+
+                        if model_preset:
+                            if model_preset.get("model"):
+                                cfg.MODEL = model_preset["model"]
+                            if model_preset.get("api_key"):
+                                cfg.API_KEY = model_preset["api_key"]
+                            if model_preset.get("api_base"):
+                                cfg.API_BASE = model_preset["api_base"]
+                        elif settings.get("model"):
+                            # 兼容旧版只保存模型名的配置
+                            cfg.MODEL = settings["model"]
+
+                        sleep_time_consolidation(lookback_days=lookback)
+                    finally:
+                        # 恢复原始配置
+                        cfg.MODEL = original_model
+                        cfg.API_KEY = original_api_key
+                        cfg.API_BASE = original_api_base
 
                     # 执行后休眠 2 小时，避免重复触发
                     time.sleep(7200)
@@ -645,5 +709,5 @@ def schedule_sleep_time_compute():
     # 启动后台线程
     worker = threading.Thread(target=_sleep_time_worker, daemon=True)
     worker.start()
-    print("[Sleep-time Compute] 定时任务已启动（每天凌晨 3 点执行）", flush=True)
+    print("[Sleep-time Compute] 定时任务已启动（每天 23 点执行）", flush=True)
 

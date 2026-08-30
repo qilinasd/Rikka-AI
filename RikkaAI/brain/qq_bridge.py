@@ -3,12 +3,51 @@ RikkaAI - QQ 桥接模块
 通过 NapCat (OneBot v11) WebSocket 连接 QQ
 """
 import json
+import random
+import re
 import threading
 import time
 import logging
 import uuid
 
 logger = logging.getLogger("QQBridge")
+
+
+def _segment_message(text: str) -> list:
+    """把长消息切成短句列表（分段回复 + 模拟打字间隔用，proactive_chat 式）。
+
+    规则：先按换行拆；超长行按句读切分；段数不超过 QQ_SEGMENT_MAX。
+    关闭开关或文本本身够短时原样返回。"""
+    try:
+        import config as _cfg
+        if not getattr(_cfg, "QQ_SEGMENT_REPLY", False):
+            return [text] if text else []
+        max_segments = max(1, int(getattr(_cfg, "QQ_SEGMENT_MAX", 3)))
+    except Exception:
+        max_segments = 3
+    text = str(text or "").strip()
+    if not text or len(text) <= 60:
+        return [text]
+    lines = [p.strip() for p in re.split(r"[\n]+", text) if p.strip()]
+    fine = []
+    for line in lines:
+        if len(line) <= 40:
+            fine.append(line)
+            continue
+        buf = ""
+        for ch in line:
+            buf += ch
+            if ch in "。！？!?~…；;" and len(buf) >= 8:
+                fine.append(buf.strip())
+                buf = ""
+        if buf.strip():
+            fine.append(buf.strip())
+    if len(fine) <= 1:
+        return [text]
+    if len(fine) > max_segments:
+        per = -(-len(fine) // max_segments)  # 向上取整分组
+        return ["".join(fine[i:i + per]) for i in range(0, len(fine), per)][:max_segments]
+    return fine
 
 # 消息回调
 _on_message = None
@@ -18,7 +57,9 @@ _on_disconnected = None
 
 
 def set_message_handler(handler):
-    """注册消息处理器：handler(user_id, group_id, message, msg_type) -> str（回复）"""
+    """注册消息处理器：handler(user_id, group_id, message, msg_type, sender_name) -> str（回复）
+
+    sender_name 为群名片/昵称（私聊为昵称，拿不到时为空串）。"""
     global _on_message
     _on_message = handler
 
@@ -99,22 +140,34 @@ class NapCatBridge:
             self._pending.pop(echo, None)
 
     def send_private_msg(self, user_id: int, message: str) -> bool:
-        """发送私聊消息"""
+        """发送私聊消息（开启分段回复时切短句，段间模拟打字间隔）"""
         try:
-            result = self._api_call("send_private_msg", {
-                "user_id": user_id, "message": message
-            })
-            return result is not None
+            ok = True
+            chunks = _segment_message(message)
+            for i, chunk in enumerate(chunks):
+                if i > 0:
+                    time.sleep(random.uniform(1.2, 3.2))  # 像真人一样"打字"再发下一条
+                result = self._api_call("send_private_msg", {
+                    "user_id": user_id, "message": chunk
+                })
+                ok = ok and result is not None
+            return ok
         except:
             return False
 
     def send_group_msg(self, group_id: int, message: str) -> bool:
-        """发送群消息"""
+        """发送群消息（分段策略同私聊）"""
         try:
-            result = self._api_call("send_group_msg", {
-                "group_id": group_id, "message": message
-            })
-            return result is not None
+            ok = True
+            chunks = _segment_message(message)
+            for i, chunk in enumerate(chunks):
+                if i > 0:
+                    time.sleep(random.uniform(1.2, 3.2))
+                result = self._api_call("send_group_msg", {
+                    "group_id": group_id, "message": chunk
+                })
+                ok = ok and result is not None
+            return ok
         except:
             return False
 
@@ -216,6 +269,10 @@ class NapCatBridge:
         """获取群列表（OneBot v11 get_group_list）"""
         return self._api_call("get_group_list", {}) or []
 
+    def get_self_qq(self):
+        """返回当前登录的 QQ 号（登录事件未到时可能为 0）。"""
+        return getattr(self, "_self_qq", 0) or 0
+
     # ── 内部：WebSocket 连接管理 ─────────────────────────────
 
     def _run(self):
@@ -241,16 +298,29 @@ class NapCatBridge:
 
     def _on_open(self, ws):
         logger.info("WebSocket 已连接")
-        # 获取机器人信息
-        try:
-            info = self.get_login_info()
-            self._self_qq = info.get("user_id")
-            self._self_name = info.get("nickname", "六花")
-        except:
-            pass
+        # 获取机器人信息（失败重试：NapCat 刚握手完可能还没准备好应答 API）
+        self._fetch_login_info_with_retry()
         if _on_connected:
             try: _on_connected()
             except: pass
+
+    def _fetch_login_info_with_retry(self):
+        """拉取机器人 QQ 号；失败后台重试（SelfQQ=None 会导致群聊 @检测完全失效）。"""
+        def _work():
+            for attempt in range(6):
+                try:
+                    info = self.get_login_info()
+                    uid = (info or {}).get("user_id")
+                    if uid:
+                        self._self_qq = int(uid)
+                        self._self_name = (info or {}).get("nickname", "六花")
+                        logger.info(f"[WS] 已获取机器人 QQ: {uid}（第 {attempt + 1} 次尝试）")
+                        return
+                except Exception as e:
+                    logger.warning(f"[WS] get_login_info 第 {attempt + 1} 次失败: {e}")
+                time.sleep(2)
+            logger.error("[WS] 多次尝试后仍未获取机器人 QQ 号，群聊 @检测将失效")
+        threading.Thread(target=_work, daemon=True, name="QQSelfInfo").start()
 
     def _on_ws_msg(self, ws, message):
         """处理 WebSocket 消息"""
@@ -268,6 +338,14 @@ class NapCatBridge:
 
         # 2. 是消息事件
         if data.get("post_type") == "message":
+            # OneBot v11 每个事件都带 self_id（机器人自己的 QQ）——
+            # 即使启动时 get_login_info 失败，也从这里自愈
+            try:
+                if data.get("self_id") and not self._self_qq:
+                    self._self_qq = int(data["self_id"])
+                    logger.info(f"[WS] 从事件 self_id 自愈机器人 QQ: {self._self_qq}")
+            except Exception:
+                pass
             user_id = data.get("user_id", 0)
             group_id = data.get("group_id", 0)
             raw_msg = str(data.get("raw_message", ""))
@@ -281,9 +359,12 @@ class NapCatBridge:
                 logger.info(f"[WS] 过滤自己发的消息 user={user_id}")
                 return
 
+            sender = data.get("sender") or {}
+            sender_name = str(sender.get("card") or sender.get("nickname") or "")[:24]
+
             if _on_message:
                 try:
-                    reply = _on_message(user_id, group_id, raw_msg, msg_type)
+                    reply = _on_message(user_id, group_id, raw_msg, msg_type, sender_name)
                     if reply:
                         if msg_type == "group" and group_id:
                             self.send_group_msg(group_id, reply)
@@ -312,5 +393,12 @@ _bridge = None
 def get_bridge():
     global _bridge
     if _bridge is None:
-        _bridge = NapCatBridge()
+        host, ws_port = "127.0.0.1", 3001
+        try:
+            import config as _cfg
+            host = getattr(_cfg, "QQ_WS_HOST", host)
+            ws_port = int(getattr(_cfg, "QQ_WS_PORT", ws_port))
+        except Exception:
+            pass
+        _bridge = NapCatBridge(host=host, ws_port=ws_port)
     return _bridge

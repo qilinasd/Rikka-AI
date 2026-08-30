@@ -93,3 +93,23 @@ RikkaAI/surf_records/
 RikkaAI/images/downloaded/
 RikkaAI/images/generated/
 RikkaAI/.codegraph/
+
+# 🔒 privacy: old git-history backup (contains persona PII) — never push
+.git.bak_privacy/
+
+# 🔒 privacy: real QQ numbers were hardcoded in this fixture (now placeholders)
+RikkaAI/tests/test_qq_whitelist_settings.py
+
+# 🧹 local artifacts / absolute paths — not needed in the repo
+.zcode/
+.zcode.d/
+req.json
+resp.json
+_t_vision.py
+素材/
+RikkaAI/screenshots/
+.vscode/
+
+# 第三方引擎/工具 —— 非六花核心源码，不随仓库公开
+RikkaAI/brain/argo/
+claude-vision-skill/
